@@ -1,0 +1,13 @@
+[package]
+name = "hfd-py"
+version = "0.0.5"
+edition = "2021"
+
+[lib]
+name = "hfd"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.20", features = ["extension-module"] }
+hfd = { path = ".." }
+tokio = { version = "1.0", features = ["full"] } 

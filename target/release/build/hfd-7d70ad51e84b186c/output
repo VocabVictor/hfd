@@ -1,0 +1,3 @@
+cargo:rerun-if-changed=Cargo.toml
+cargo:rerun-if-changed=hfd-py/Cargo.toml
+cargo:rerun-if-changed=hfd-py/pyproject.toml

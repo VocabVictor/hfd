@@ -1,0 +1,32 @@
+[package]
+name = "hfd"
+version = "0.0.3"
+edition = "2021"
+authors = ["migu"]
+description = "A fast Hugging Face model downloader written in Rust"
+
+[lib]
+name = "hfd"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+reqwest = { version = "0.11", features = ["json", "stream", "rustls-tls"], default-features = false }
+tokio = { version = "1.0", features = ["full"] }
+futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+clap = { version = "4.0", features = ["derive"] }
+indicatif = "0.17"
+anyhow = "1.0"
+url = "2.5"
+bytes = "1.0"
+
+[dependencies.pyo3]
+version = "0.20"
+features = ["extension-module"]
+
+[workspace]
+members = ["hfd-py"]
+
+[package.metadata]
+build_counter = "28" 
