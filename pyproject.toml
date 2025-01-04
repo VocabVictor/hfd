@@ -1,0 +1,44 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "hfd"
+version = "0.0.6"
+description = "Fast HuggingFace model downloader"
+requires-python = ">=3.7"
+readme = {file = "README.md", content-type = "text/markdown"}
+authors = [
+    {name = "migu", email = "migu@example.com"}
+]
+maintainers = [
+    {name = "migu", email = "migu@example.com"}
+]
+keywords = ["huggingface", "model", "download", "machine-learning", "deep-learning"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.urls]
+Homepage = "https://github.com/migu/hfd"
+Repository = "https://github.com/migu/hfd"
+Documentation = "https://github.com/migu/hfd"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
+strip = true
+compatibility = "manylinux2014"
+
+[project.scripts]
+hfd = "hfd:main"
