@@ -1,12 +1,11 @@
 use crate::types::{RepoFile, RepoInfo};
 use crate::utils::{create_progress_bar, format_size};
+use crate::config::Config;
 use futures::StreamExt;
-use futures_util::stream::StreamExt as _;
 use indicatif;
 use pyo3::prelude::*;
 use reqwest::Client;
 use shellexpand;
-use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -25,7 +24,7 @@ pub struct ModelDownloader {
     cache_dir: String,
     client: Client,
     runtime: Runtime,
-    endpoint: String,
+    config: Config,
     include_patterns: Vec<String>,
     exclude_patterns: Vec<String>,
 }
@@ -44,12 +43,11 @@ impl ModelDownloader {
             RUNNING.store(false, Ordering::SeqCst);
         }).expect("Error setting Ctrl+C handler");
         
-        let endpoint = env::var("HF_ENDPOINT")
-            .unwrap_or_else(|_| "https://huggingface.co".to_string());
+        let config = Config::load();
         
         // 创建优化的 HTTP 客户端
         let client = Client::builder()
-            .pool_max_idle_per_host(10)
+            .pool_max_idle_per_host(config.connections_per_download)
             .pool_idle_timeout(std::time::Duration::from_secs(300))
             .tcp_keepalive(std::time::Duration::from_secs(60))
             .tcp_nodelay(true)
@@ -63,12 +61,16 @@ impl ModelDownloader {
             })?;
         
         Ok(Self {
-            cache_dir: cache_dir.unwrap_or_else(|| "~/.cache/huggingface".to_string()),
+            cache_dir: if let Some(dir) = cache_dir {
+                dir
+            } else {
+                config.get_model_dir("")
+            },
             client,
             runtime: Runtime::new().map_err(|e| {
                 pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create runtime: {}", e))
             })?,
-            endpoint,
+            config,
             include_patterns: include_patterns.unwrap_or_default(),
             exclude_patterns: exclude_patterns.unwrap_or_default(),
         })
@@ -110,7 +112,7 @@ impl ModelDownloader {
         RUNNING.store(true, Ordering::SeqCst);
         
         self.runtime.block_on(async {
-            let url = format!("{}/api/models/{}", self.endpoint, model_id);
+            let url = format!("{}/api/models/{}", self.config.endpoint, model_id);
             println!("Fetching repo info from: {}", url);
             
             let response = self.client.get(&url)
@@ -124,7 +126,7 @@ impl ModelDownloader {
                     let new_url = if new_location.to_str().unwrap().starts_with("http") {
                         new_location.to_str().unwrap().to_string()
                     } else {
-                        format!("{}{}", self.endpoint, new_location.to_str().unwrap())
+                        format!("{}{}", self.config.endpoint, new_location.to_str().unwrap())
                     };
                     println!("Following redirect to: {}", new_url);
                     let response = self.client.get(&new_url)
@@ -146,7 +148,7 @@ impl ModelDownloader {
                     for file in &mut repo_info.siblings {
                         let file_url = format!(
                             "{}/{}/resolve/main/{}",
-                            self.endpoint, model_id, file.rfilename
+                            self.config.endpoint, model_id, file.rfilename
                         );
                         if let Ok(resp) = self.client.head(&file_url).send().await {
                             if let Some(size) = resp.headers().get("content-length") {
@@ -178,7 +180,7 @@ impl ModelDownloader {
                 for file in &mut repo_info.siblings {
                     let file_url = format!(
                         "{}/{}/resolve/main/{}",
-                        self.endpoint, model_id, file.rfilename
+                        self.config.endpoint, model_id, file.rfilename
                     );
                     if let Ok(resp) = self.client.head(&file_url).send().await {
                         if let Some(size) = resp.headers().get("content-length") {
@@ -192,7 +194,11 @@ impl ModelDownloader {
                 repo_info
             };
 
-            let base_path = PathBuf::from(&self.cache_dir);
+            let base_path = if self.config.use_local_dir {
+                PathBuf::from(self.config.get_model_dir(model_id))
+            } else {
+                PathBuf::from(&self.cache_dir)
+            };
             
             // 创建必要的目录
             fs::create_dir_all(&base_path).map_err(|e| {
@@ -214,7 +220,7 @@ impl ModelDownloader {
             // 创建下载任务
             let mut tasks = Vec::new();
             let multi_progress = indicatif::MultiProgress::new();
-            let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(3));  // 限制并发下载数为3
+            let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(self.config.concurrent_downloads));
 
             for file in files_to_download {
                 if !RUNNING.load(Ordering::SeqCst) {
@@ -223,11 +229,12 @@ impl ModelDownloader {
 
                 let file_url = format!(
                     "{}/{}/resolve/main/{}",
-                    self.endpoint, model_id, file.rfilename
+                    self.config.endpoint, model_id, file.rfilename
                 );
                 let file_path = base_path.join(&file.rfilename);
                 let client = self.client.clone();
                 let semaphore = semaphore.clone();
+                let config = self.config.clone();
 
                 // 检查文件是否已存在且大小正确
                 if let Ok(metadata) = fs::metadata(&file_path) {
@@ -269,8 +276,8 @@ impl ModelDownloader {
                     let mut downloaded: u64 = 0;
                     let mut stream = response.bytes_stream();
 
-                    // 使用较大的缓冲区以提高下载速度
-                    let mut buffer = Vec::with_capacity(1024 * 1024);  // 1MB 缓冲区
+                    // 使用配置的缓冲区大小
+                    let mut buffer = Vec::with_capacity(config.buffer_size);
 
                     while let Some(chunk) = stream.next().await {
                         if !RUNNING.load(Ordering::SeqCst) {
@@ -280,8 +287,8 @@ impl ModelDownloader {
                         let chunk = chunk.map_err(|e| format!("Failed to read chunk: {}", e))?;
                         buffer.extend_from_slice(&chunk);
                         
-                        // 当缓冲区达到一定大小时写入文件
-                        if buffer.len() >= 1024 * 1024 {  // 1MB
+                        // 当缓冲区达到配置的大小时写入文件
+                        if buffer.len() >= config.buffer_size {
                             file.write_all(&buffer)
                                 .map_err(|e| format!("Failed to write chunk: {}", e))?;
                             downloaded += buffer.len() as u64;
