@@ -6,11 +6,12 @@ jobs:
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-22.04, windows-latest, macos-latest]
         python-version: ["3.8", "3.9", "3.10", "3.11"]
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
           - os: windows-latest
             target: x86_64-pc-windows-msvc
@@ -30,30 +31,21 @@ jobs:
       with:
         targets: ${{ matrix.target }}
     
-    - name: Add conda to system path
-      run: |
-        if [ "$RUNNER_OS" == "Linux" ]; then
-          echo $CONDA/bin >> $GITHUB_PATH
-        elif [ "$RUNNER_OS" == "Windows" ]; then
-          echo $CONDA/Scripts >> $GITHUB_PATH
-        elif [ "$RUNNER_OS" == "macOS" ]; then
-          echo $CONDA/bin >> $GITHUB_PATH
-        fi
-      shell: bash
-    
     - name: Install dependencies
       run: |
-        conda env update --file environment.yml --name base
-        conda install flake8 pytest
-        pip install maturin
+        python -m pip install --upgrade pip
+        pip install maturin pytest
+      shell: bash
     
     - name: Build wheels
       run: |
         maturin build --release --target ${{ matrix.target }}
+      shell: bash
     
     - name: Run tests
       run: |
-        pytest
+        cargo test --verbose
+      shell: bash
     
     - name: Upload wheels
       uses: actions/upload-artifact@v3
@@ -63,7 +55,7 @@ jobs:
 
   publish:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/download-artifact@v3
@@ -77,15 +69,3 @@ jobs:
         run: |
           pip install --upgrade twine
           twine upload dist/**/*.whl
-      
-      - name: Publish to Conda
-        env:
-          ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
-        run: |
-          conda install conda-build anaconda-client
-          # 为每个平台构建 conda 包
-          for PLATFORM in linux-64 win-64 osx-64
-          do
-            conda build . --output-folder conda-bld/$PLATFORM
-            anaconda -t $ANACONDA_TOKEN upload conda-bld/$PLATFORM/*/*.tar.bz2
-          done
