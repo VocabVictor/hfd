@@ -1,6 +1,6 @@
 [package]
 name = "hfd"
-version = "0.0.6"
+version = "0.0.7"
 edition = "2021"
 authors = ["Your Name <your.email@example.com>"]
 description = "Fast HuggingFace model downloader"
@@ -25,3 +25,5 @@ futures-util = "0.3"
 tokio-util = { version = "0.7", features = ["codec"] }
 ctrlc = "3.4.0"
 lazy_static = "1.4.0"
+dirs = "5.0"
+toml = "0.8"
