@@ -2,6 +2,7 @@
 
 # 设置版本号
 VERSION="v0.0.7"
+VERSION_WITHOUT_V="${VERSION#v}"
 
 # 确保工作目录干净
 if [[ -n $(git status -s) ]]; then
@@ -10,13 +11,16 @@ if [[ -n $(git status -s) ]]; then
 fi
 
 # 更新 Cargo.toml 中的版本号
-sed -i "s/^version = \".*\"/version = \"${VERSION#v}\"/" Cargo.toml
+sed -i "s/^version = \".*\"/version = \"${VERSION_WITHOUT_V}\"/" Cargo.toml
+
+# 更新 pyproject.toml 中的版本号
+sed -i "s/^version = \".*\"/version = \"${VERSION_WITHOUT_V}\"/" pyproject.toml
 
 # 更新 conda/meta.yaml 中的版本号
-sed -i "s/{% set version = \".*\" %}/{% set version = \"${VERSION#v}\" %}/" conda/meta.yaml
+sed -i "s/{% set version = \".*\" %}/{% set version = \"${VERSION_WITHOUT_V}\" %}/" conda/meta.yaml
 
 # 提交版本更新
-git add Cargo.toml conda/meta.yaml
+git add Cargo.toml pyproject.toml conda/meta.yaml
 git commit -m "chore: bump version to ${VERSION}"
 
 # 推送更改
