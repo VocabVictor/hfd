@@ -118,16 +118,19 @@ jobs:
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
         with:
+          auto-update-conda: true
           python-version: '3.10'
 
-      - name: Install conda-build
+      - name: Install conda-build and anaconda-client
+        shell: bash -el {0}
         run: |
-          pip install conda-build anaconda-client
+          conda install -y conda-build anaconda-client
 
       - name: Create conda recipe
+        shell: bash -el {0}
         run: |
           mkdir -p conda
           cat > conda/meta.yaml << 'EOF'
@@ -162,9 +165,11 @@ jobs:
           EOF
 
       - name: Build conda package
+        shell: bash -el {0}
         run: conda build conda
 
       - name: Upload to Anaconda
+        shell: bash -el {0}
         env:
           ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
         run: |
