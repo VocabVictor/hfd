@@ -37,10 +37,18 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Create Python package structure
+      - name: Create Python package structure (Linux/macOS)
+        if: runner.os != 'Windows'
         run: |
           mkdir -p python/hfd
           touch python/hfd/__init__.py
+
+      - name: Create Python package structure (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          if not exist "python\hfd" mkdir python\hfd
+          type nul > python\hfd\__init__.py
 
       - name: Build wheels on Linux
         if: runner.os == 'Linux'
