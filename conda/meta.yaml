@@ -1,0 +1,44 @@
+{% set name = "hfd" %}
+{% set version = "0.0.6" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  path: ..
+
+build:
+  number: 0
+  script: {{ PYTHON }} -m pip install . -vv
+
+requirements:
+  build:
+    - python
+    - pip
+    - maturin >=1.0,<2.0
+    - setuptools-rust
+    - rust
+    - cargo
+  host:
+    - python
+    - pip
+  run:
+    - python
+    - requests
+    - tqdm
+    - regex
+
+about:
+  home: https://github.com/migu/hfd
+  license: MIT
+  license_family: MIT
+  summary: A fast Hugging Face model downloader written in Rust
+  description: |
+    HFD (Hugging Face Downloader) is a fast and efficient tool for downloading
+    models from Hugging Face Hub. Written in Rust with Python bindings.
+  dev_url: https://github.com/migu/hfd
+
+extra:
+  recipe-maintainers:
+    - migu 

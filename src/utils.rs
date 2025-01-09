@@ -1,5 +1,4 @@
 use indicatif::{ProgressBar, ProgressStyle, MultiProgress};
-use std::time::Duration;
 use std::sync::OnceLock;
 use std::sync::Arc;
 
@@ -11,7 +10,7 @@ pub fn create_progress_bar(total_size: u64, prefix: &str, initial: u64) -> Progr
     
     // 设置更清晰的样式
     pb.set_style(ProgressStyle::with_template(
-        "{msg}\n[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({percent}%) @ {binary_bytes_per_sec}",
+        "[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({percent}%) @ {binary_bytes_per_sec} {msg}",
     )
     .unwrap()
     .progress_chars("=>-"));
