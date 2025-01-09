@@ -1,13 +1,20 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde_json::Value;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RepoFile {
-    pub rfilename: String,
-    #[serde(default)]
-    pub size: Option<u64>,
+#[derive(Debug, Clone)]
+pub struct AuthInfo {
+    pub token: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct RepoInfo {
-    pub siblings: Vec<RepoFile>,
+    pub siblings: Vec<FileInfo>,
+    pub gated: Value,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FileInfo {
+    #[serde(rename = "rfilename")]
+    pub rfilename: String,
+    pub size: Option<u64>,
 } 

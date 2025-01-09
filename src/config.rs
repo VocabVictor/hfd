@@ -29,6 +29,10 @@ pub struct Config {
     // 下载缓冲区大小 (bytes)
     #[serde(default = "default_buffer_size")]
     pub buffer_size: usize,
+    #[serde(default = "default_model_dir")]
+    pub model_dir: String,
+    #[serde(default)]
+    pub hf_token: Option<String>,
 }
 
 fn default_endpoint() -> String {
@@ -40,6 +44,10 @@ fn default_use_local_dir() -> bool {
 }
 
 fn default_local_dir_base() -> String {
+    "~/.cache/huggingface".to_string()
+}
+
+fn default_model_dir() -> String {
     "~/.cache/huggingface".to_string()
 }
 
@@ -62,41 +70,55 @@ fn default_buffer_size() -> usize {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            endpoint: default_endpoint(),
-            use_local_dir: default_use_local_dir(),
-            local_dir_base: default_local_dir_base(),
-            concurrent_downloads: default_concurrent_downloads(),
-            max_download_speed: 0,
-            connections_per_download: default_connections_per_download(),
-            parallel_download_threshold: default_parallel_download_threshold(),
-            buffer_size: default_buffer_size(),
+            endpoint: "https://huggingface.co".to_string(),
+            concurrent_downloads: 3,
+            max_download_speed: 0,  // 不限速
+            connections_per_download: 10,  // 修改默认并发数为10
+            parallel_download_threshold: 100 * 1024 * 1024,  // 100MB
+            buffer_size: 1024 * 1024,  // 1MB
+            use_local_dir: false,
+            local_dir_base: "~/.code/models".to_string(),
+            model_dir: "~/.cache/huggingface".to_string(),
+            hf_token: None,
         }
     }
 }
 
 impl Config {
     pub fn load() -> Self {
-        let config_path = if let Some(home) = dirs::home_dir() {
-            home.join(".hfdconfig")
-        } else {
-            PathBuf::from(".hfdconfig")
-        };
-        
-        if !config_path.exists() {
-            return Config::default();
-        }
-        
-        match fs::read_to_string(&config_path) {
-            Ok(contents) => {
-                match toml::from_str::<Config>(&contents) {
-                    Ok(config) => config,
-                    Err(_) => Config::default()
-                }
-            }
-            Err(_) => Config::default()
-        }
+        Self::load_from_default_paths()
     }
 
+    pub fn load_from_path(config_path: &str) -> Self {
+        if let Ok(content) = fs::read_to_string(config_path) {
+            if let Ok(config) = toml::from_str(&content) {
+                return config;
+            }
+            eprintln!("警告: 无法解析配置文件 {}", config_path);
+        } else {
+            eprintln!("警告: 无法读取配置文件 {}", config_path);
+        }
+        Self::default()
+    }
+
+    fn load_from_default_paths() -> Self {
+        let config_paths = vec![
+            dirs::home_dir().map(|p| p.join(".hfdconfig")),
+            Some(PathBuf::from(".hfdconfig")),
+        ];
+
+        for config_path in config_paths.into_iter().flatten() {
+            if let Ok(content) = fs::read_to_string(&config_path) {
+                if let Ok(config) = toml::from_str::<Config>(&content) {
+                    return config;
+                }
+            }
+        }
+
+        Self::default()
+    }
+
+    #[allow(dead_code)]
     pub fn save(&self) -> std::io::Result<()> {
         let config_path = if let Some(home) = dirs::home_dir() {
             home.join(".hfdconfig")
