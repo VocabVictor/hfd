@@ -37,18 +37,15 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Create Python package structure (Linux/macOS)
-        if: runner.os != 'Windows'
+      - name: Create Python package structure
+        shell: bash
         run: |
           mkdir -p python/hfd
-          touch python/hfd/__init__.py
+          cat > python/hfd/__init__.py << 'EOF'
+          from .hfd import main
 
-      - name: Create Python package structure (Windows)
-        if: runner.os == 'Windows'
-        shell: cmd
-        run: |
-          if not exist "python\hfd" mkdir python\hfd
-          type nul > python\hfd\__init__.py
+          __all__ = ["main"]
+          EOF
 
       - name: Build wheels on Linux
         if: runner.os == 'Linux'
@@ -59,6 +56,19 @@ jobs:
         if: runner.os != 'Linux'
         run: |
           maturin build --release
+
+      - name: Test wheel installation (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          pip install target/wheels/*.whl
+          python -c "from hfd import main"
+
+      - name: Test wheel installation (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          pip install (Get-ChildItem target/wheels/*.whl)
+          python -c "from hfd import main"
 
       - name: Upload wheels
         uses: actions/upload-artifact@v3
@@ -129,6 +139,16 @@ jobs:
         run: |
           conda install -y conda-build anaconda-client
 
+      - name: Download wheels
+        uses: actions/download-artifact@v3
+        with:
+          path: dist
+
+      - name: Move wheels
+        run: |
+          mkdir -p dist/all
+          find dist -type f -name "*.whl" -exec mv {} dist/all/ \;
+
       - name: Create conda recipe
         shell: bash -el {0}
         run: |
@@ -142,19 +162,17 @@ jobs:
             version: {{ version }}
           
           source:
-            path: ..
+            path: dist/all
           
           build:
             number: 0
-            script: {{ PYTHON }} -m pip install . -vv
+            noarch: python
+            script: pip install *.whl
           
           requirements:
             host:
               - python
               - pip
-              - maturin
-              - setuptools
-              - wheel
             run:
               - python
           
@@ -166,11 +184,17 @@ jobs:
 
       - name: Build conda package
         shell: bash -el {0}
-        run: conda build conda
+        run: |
+          conda build conda
+          # 显示构建目录内容，用于调试
+          ls -R /usr/share/miniconda/conda-bld/
 
       - name: Upload to Anaconda
         shell: bash -el {0}
         env:
           ANACONDA_TOKEN: ${{ secrets.ANACONDA_TOKEN }}
         run: |
-          anaconda -t $ANACONDA_TOKEN upload -u migu /usr/share/miniconda/conda-bld/*/*.tar.bz2 --force 
+          # 添加默认通道以避免警告
+          conda config --add channels defaults
+          # 查找并上传构建的包
+          find /usr/share/miniconda/conda-bld/ -name "*.tar.bz2" -exec anaconda -t $ANACONDA_TOKEN upload -u migu {} --force \; 
