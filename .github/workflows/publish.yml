@@ -43,7 +43,7 @@ jobs:
           CARGO_TERM_COLOR: always
         run: |
           mkdir -p target/wheels
-          maturin build --release --strip --compatibility manylinux2014 --target x86_64-unknown-linux-gnu
+          maturin build --release --strip --compatibility manylinux2014 --target x86_64-unknown-linux-gnu --manifest-path Cargo.toml
           ls -la target/wheels/
 
       - name: Publish to PyPI
