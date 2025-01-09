@@ -39,7 +39,7 @@ jobs:
 
       - name: Build wheels
         run: |
-          maturin build --release --strip
+          maturin build --release --strip --manifest-path Cargo.toml
 
       - name: Upload wheels
         uses: actions/upload-artifact@v3
@@ -74,6 +74,10 @@ jobs:
         run: |
           mkdir -p dist/all
           find dist -type f -name "*.whl" -exec mv {} dist/all/ \;
+
+      - name: List wheels
+        run: |
+          ls -la dist/all/
 
       - name: Publish to PyPI
         env:
