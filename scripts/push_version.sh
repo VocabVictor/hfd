@@ -29,9 +29,6 @@ if [ -f "conda/meta.yaml" ]; then
     git add conda/meta.yaml
 fi
 
-# 提交版本更新
-git commit -m "chore: bump version to ${VERSION}"
-
 # 推送更改
 git push origin main
 
