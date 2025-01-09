@@ -4,10 +4,11 @@
 VERSION="v0.0.7"
 VERSION_WITHOUT_V="${VERSION#v}"
 
-# 确保工作目录干净
+# 检查是否有未提交的更改，如果有则提交
 if [[ -n $(git status -s) ]]; then
-    echo "Error: Working directory is not clean. Please commit all changes first."
-    exit 1
+    echo "Found uncommitted changes, committing them first..."
+    git add .
+    git commit -m "chore: save uncommitted changes before version bump"
 fi
 
 # 更新 Cargo.toml 中的版本号
