@@ -8,7 +8,7 @@ VERSION_WITHOUT_V="${VERSION#v}"
 if [[ -n $(git status -s) ]]; then
     echo "Found uncommitted changes, committing them first..."
     git add .
-    git commit -m "chore: save uncommitted changes before version bump"
+    git commit -m "v${VERSION_WITHOUT_V}"
 fi
 
 # 更新 Cargo.toml 中的版本号
