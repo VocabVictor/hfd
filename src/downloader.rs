@@ -265,7 +265,7 @@ impl ModelDownloader {
         start: u64,
         end: u64,
         auth_token: Option<String>,
-        chunk_size: u64,
+        _chunk_size: u64,
         running: Arc<AtomicBool>,
         pb: indicatif::ProgressBar,
     ) -> Result<(), String> {
@@ -306,7 +306,7 @@ impl ModelDownloader {
         let mut stream = response.bytes_stream();
         let mut buffer = Vec::with_capacity(8 * 1024 * 1024); // 8MB buffer
         let mut last_progress = std::time::Instant::now();
-        let mut downloaded = 0u64;
+        let mut _downloaded = 0u64;
 
         while let Some(chunk_result) = stream.next().await {
             if !running.load(Ordering::SeqCst) {
@@ -315,7 +315,7 @@ impl ModelDownloader {
 
             let chunk = chunk_result.map_err(|e| format!("读取响应失败: {}", e))?;
             buffer.extend_from_slice(&chunk);
-            downloaded += chunk.len() as u64;
+            _downloaded += chunk.len() as u64;
             
             let now = std::time::Instant::now();
             if now.duration_since(last_progress).as_secs() > 60 {  // 增加超时时间到60秒
@@ -384,12 +384,12 @@ impl ModelDownloader {
         let mut stream = response.bytes_stream();
         let mut buffer = Vec::with_capacity(8 * 1024 * 1024); // 8MB buffer
         let mut last_progress = std::time::Instant::now();
-        let mut downloaded = 0u64;
+        let mut _downloaded = 0u64;
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| format!("读取响应失败: {}", e))?;
             buffer.extend_from_slice(&chunk);
-            downloaded += chunk.len() as u64;
+            _downloaded += chunk.len() as u64;
             
             let now = std::time::Instant::now();
             if now.duration_since(last_progress).as_secs() > 60 {
@@ -399,7 +399,7 @@ impl ModelDownloader {
             if buffer.len() >= 8 * 1024 * 1024 { // 8MB
                 file.write_all(&buffer)
                     .map_err(|e| format!("写入文件失败: {}", e))?;
-                pb.set_position(downloaded);
+                pb.set_position(_downloaded);  // 使用 _downloaded 更新进度条
                 buffer.clear();
                 last_progress = now;
             }
@@ -408,7 +408,7 @@ impl ModelDownloader {
         if !buffer.is_empty() {
             file.write_all(&buffer)
                 .map_err(|e| format!("写入文件失败: {}", e))?;
-            pb.set_position(downloaded);
+            pb.set_position(_downloaded);  // 使用 _downloaded 更新最终进度
         }
 
         file.sync_all()
@@ -439,7 +439,7 @@ impl ModelDownloader {
         let initial_size = if let Ok(metadata) = fs::metadata(&file_path) {
             let size = metadata.len();
             if size == total_size {
-                pb.finish_with_message("✓");
+                pb.finish_with_message(format!("{} ✓", file_path.file_name().unwrap().to_string_lossy()));
                 return Ok(());  // 文件已完全下载
             }
             // 如果文件大小超过预期，删除重新下载
@@ -667,21 +667,31 @@ impl ModelDownloader {
         let model_id = model_id.to_string();
         let base_path = base_path.clone();
 
+        // 创建信号量来限制并发下载数
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(self.config.concurrent_downloads)); 
+
+        // 收集所有需要下载的文件信息
+        let download_info: Vec<_> = files_to_download.into_iter()
+            .map(|file| (file.rfilename.clone(), file.size))
+            .collect();
+
         // 在后台线程中运行下载任务
         let download_handle = tokio::spawn(async move {
-            // 一次只下载一个文件
-            for (idx, file) in files_to_download.iter().enumerate() {
+            let mut download_tasks = Vec::new();
+            let _total_files = download_info.len();
+
+            for (_idx, (filename, file_size)) in download_info.into_iter().enumerate() {
                 if !running.load(Ordering::SeqCst) {
                     return Ok("下载已取消".to_string());
                 }
 
-                let file_path = base_path.join(&file.rfilename);
+                let file_path = base_path.join(&filename);
 
                 // 检查文件是否已下载
                 if let Ok(metadata) = fs::metadata(&file_path) {
-                    if let Some(expected_size) = file.size {
+                    if let Some(expected_size) = file_size {
                         if metadata.len() == expected_size {
-                            if let Err(e) = print_status(&format!("跳过已下载的文件: {}", file.rfilename)) {
+                            if let Err(e) = print_status(&format!("跳过已下载的文件: {}", filename)) {
                                 println!("Warning: Failed to print status: {}", e);
                             }
                             continue;  // 跳过已下载完成的文件
@@ -689,10 +699,10 @@ impl ModelDownloader {
                     }
                 }
 
-                let file_url = format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename);
+                let file_url = format!("{}/{}/resolve/main/{}", endpoint, model_id, filename);
 
                 // 获取文件总大小
-                let total_size = if let Some(size) = file.size {
+                let total_size = if let Some(size) = file_size {
                     size
                 } else {
                     let mut request = client.get(&file_url);
@@ -708,7 +718,7 @@ impl ModelDownloader {
 
                 let pb = create_progress_bar(
                     total_size,
-                    &format!("[{}/{}] {}", idx + 1, files_to_download.len(), file.rfilename),
+                    &filename,  // 只显示文件名，不显示序号
                     if let Ok(metadata) = fs::metadata(&file_path) {
                         metadata.len()
                     } else {
@@ -719,59 +729,82 @@ impl ModelDownloader {
                 const MAX_RETRIES: usize = 5;
                 const SMALL_FILE_THRESHOLD: u64 = 10 * 1024 * 1024; // 10MB
 
-                let download_result = if total_size <= SMALL_FILE_THRESHOLD {
-                    // 小文件直接下载
-                    let result = ModelDownloader::download_small_file(
-                        &client,
-                        &file_url,
-                        &file_path,
-                        auth_token.clone(),
-                        pb.clone(),
-                    ).await;
-                    pb.finish_with_message("✓");
-                    result
-                } else {
-                    // 大文件使用分块多线程下载
-                    let result = ModelDownloader::download_file_with_chunks(
-                        &client,
-                        file_url.clone(),
-                        file_path.clone(),
-                        total_size,
-                        0,
-                        MAX_RETRIES,
-                        auth_token.clone(),
-                        pb.clone(),
-                        running.clone(),
-                    ).await;
-                    pb.finish_with_message("✓");
-                    result
-                };
+                // 克隆需要的变量
+                let client = client.clone();
+                let file_url = file_url.clone();
+                let file_path = file_path.clone();
+                let auth_token = auth_token.clone();
+                let running = running.clone();
+                let semaphore = semaphore.clone();
+                let pb = pb.clone();
+                let filename = filename.clone();
 
-                match download_result {
-                    Ok(_) => {
-                        if !running.load(Ordering::SeqCst) {
-                            return Ok("下载已取消".to_string());
-                        }
-                        
-                        // 验证文件大小
-                        if let Ok(metadata) = fs::metadata(&file_path) {
-                            if let Some(expected_size) = file.size {
-                                if metadata.len() != expected_size && expected_size != 0 {
-                                    return Err(format!("文件大小不匹配: {} != {}", metadata.len(), expected_size));
+                let download_task = tokio::spawn(async move {
+                    // 获取信号量许可
+                    let _permit = semaphore.acquire().await.map_err(|e| format!("获取信号量失败: {}", e))?;
+
+                    let download_result = if total_size <= SMALL_FILE_THRESHOLD {
+                        // 小文件直接下载
+                        let result = ModelDownloader::download_small_file(
+                            &client,
+                            &file_url,
+                            &file_path,
+                            auth_token.clone(),
+                            pb.clone(),
+                        ).await;
+                        pb.finish_with_message(format!("{} ✓", filename));
+                        result
+                    } else {
+                        // 大文件使用分块多线程下载
+                        let result = ModelDownloader::download_file_with_chunks(
+                            &client,
+                            file_url.clone(),
+                            file_path.clone(),
+                            total_size,
+                            0,
+                            MAX_RETRIES,
+                            auth_token.clone(),
+                            pb.clone(),
+                            running.clone(),
+                        ).await;
+                        pb.finish_with_message(format!("{} ✓", filename));
+                        result
+                    };
+
+                    match download_result {
+                        Ok(_) => {
+                            if !running.load(Ordering::SeqCst) {
+                                return Ok(());
+                            }
+                            
+                            // 验证文件大小
+                            if let Ok(metadata) = fs::metadata(&file_path) {
+                                if let Some(expected_size) = file_size {
+                                    if metadata.len() != expected_size && expected_size != 0 {
+                                        return Err(format!("文件大小不匹配: {} != {}", metadata.len(), expected_size));
+                                    }
                                 }
                             }
-                        }
-                        
-                        // 尝试解压文件
-                        if let Err(e) = ModelDownloader::decompress_gzip_file(&file_path) {
-                            if let Err(print_err) = print_status(&format!("Warning: Failed to decompress {}: {}", file.rfilename, e)) {
-                                println!("Warning: Failed to print status: {}", print_err);
+                            
+                            // 尝试解压文件
+                            if let Err(e) = ModelDownloader::decompress_gzip_file(&file_path) {
+                                if let Err(print_err) = print_status(&format!("Warning: Failed to decompress {}: {}", filename, e)) {
+                                    println!("Warning: Failed to print status: {}", print_err);
+                                }
                             }
-                        }
-                    },
-                    Err(e) => {
-                        return Err(e);
+                            Ok(())
+                        },
+                        Err(e) => Err(e),
                     }
+                });
+
+                download_tasks.push(download_task);
+            }
+
+            // 等待所有下载任务完成
+            for task in download_tasks {
+                if let Err(e) = task.await {
+                    return Err(format!("下载任务失败: {}", e));
                 }
             }
 
