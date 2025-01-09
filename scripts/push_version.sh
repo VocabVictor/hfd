@@ -11,16 +11,24 @@ if [[ -n $(git status -s) ]]; then
 fi
 
 # 更新 Cargo.toml 中的版本号
-sed -i "s/^version = \".*\"/version = \"${VERSION_WITHOUT_V}\"/" Cargo.toml
+if [ -f "Cargo.toml" ]; then
+    sed -i "s/^version = \".*\"/version = \"${VERSION_WITHOUT_V}\"/" Cargo.toml
+    git add Cargo.toml
+fi
 
 # 更新 pyproject.toml 中的版本号
-sed -i "s/^version = \".*\"/version = \"${VERSION_WITHOUT_V}\"/" pyproject.toml
+if [ -f "pyproject.toml" ]; then
+    sed -i "s/^version = \".*\"/version = \"${VERSION_WITHOUT_V}\"/" pyproject.toml
+    git add pyproject.toml
+fi
 
-# 更新 conda/meta.yaml 中的版本号
-sed -i "s/{% set version = \".*\" %}/{% set version = \"${VERSION_WITHOUT_V}\" %}/" conda/meta.yaml
+# 更新 conda/meta.yaml 中的版本号（如果存在）
+if [ -f "conda/meta.yaml" ]; then
+    sed -i "s/{% set version = \".*\" %}/{% set version = \"${VERSION_WITHOUT_V}\" %}/" conda/meta.yaml
+    git add conda/meta.yaml
+fi
 
 # 提交版本更新
-git add Cargo.toml pyproject.toml conda/meta.yaml
 git commit -m "chore: bump version to ${VERSION}"
 
 # 推送更改
