@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 设置版本号
-VERSION="v0.0.7"
+VERSION="v0.0.8"
 VERSION_WITHOUT_V="${VERSION#v}"
 
 # 检查是否有未提交的更改，如果有则提交
