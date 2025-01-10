@@ -9,6 +9,7 @@ use std::sync::Arc;
 use futures::StreamExt;
 use flate2::read::GzDecoder;
 use tokio::sync::Semaphore;
+use tokio::select;
 use serde_json::Value;
 
 impl ModelDownloader {
@@ -120,7 +121,7 @@ impl ModelDownloader {
 
                 let pb = create_progress_bar(
                     total_size,
-                    &filename,  // 只显示文件名，不显示序号
+                    &filename,
                     if let Ok(metadata) = fs::metadata(&file_path) {
                         metadata.len()
                     } else {
@@ -145,58 +146,41 @@ impl ModelDownloader {
                     // 获取信号量许可
                     let _permit = semaphore.acquire().await.map_err(|e| format!("获取信号量失败: {}", e))?;
 
-                    let download_result = if total_size <= SMALL_FILE_THRESHOLD {
-                        // 小文件直接下载
-                        let result = Self::download_small_file(
-                            &client,
-                            &file_url,
-                            &file_path,
-                            auth_token.clone(),
-                            pb.clone(),
-                        ).await;
-                        pb.finish_with_message(format!("{} ✓", filename));
-                        result
-                    } else {
-                        // 大文件使用分块多线程下载
-                        let result = Self::download_file_with_chunks(
-                            &client,
-                            file_url.clone(),
-                            file_path.clone(),
-                            total_size,
-                            0,
-                            MAX_RETRIES,
-                            auth_token.clone(),
-                            pb.clone(),
-                            running.clone(),
-                        ).await;
-                        pb.finish_with_message(format!("{} ✓", filename));
-                        result
-                    };
-
-                    match download_result {
-                        Ok(_) => {
-                            if !running.load(Ordering::SeqCst) {
-                                return Ok(());
+                    select! {
+                        download_result = if total_size <= SMALL_FILE_THRESHOLD {
+                            Self::download_small_file(
+                                &client,
+                                &file_url,
+                                &file_path,
+                                auth_token.clone(),
+                                pb.clone(),
+                            )
+                        } else {
+                            Self::download_file_with_chunks(
+                                &client,
+                                file_url.clone(),
+                                file_path.clone(),
+                                total_size,
+                                0,
+                                MAX_RETRIES,
+                                auth_token.clone(),
+                                pb.clone(),
+                                running.clone(),
+                            )
+                        } => {
+                            match download_result {
+                                Ok(_) => {
+                                    pb.finish_with_message(format!("{} ✓", filename));
+                                    Ok(())
+                                },
+                                Err(e) => Err(e),
                             }
-                            
-                            // 验证文件大小
-                            if let Ok(metadata) = fs::metadata(&file_path) {
-                                if let Some(expected_size) = file_size {
-                                    if metadata.len() != expected_size && expected_size != 0 {
-                                        return Err(format!("文件大小不匹配: {} != {}", metadata.len(), expected_size));
-                                    }
-                                }
-                            }
-                            
-                            // 尝试解压文件
-                            if let Err(e) = Self::decompress_gzip_file(&file_path) {
-                                if let Err(print_err) = print_status(&format!("Warning: Failed to decompress {}: {}", filename, e)) {
-                                    println!("Warning: Failed to print status: {}", print_err);
-                                }
-                            }
+                        }
+                        _ = tokio::signal::ctrl_c() => {
+                            pb.abandon_with_message(format!("{} 已取消", filename));
+                            running.store(false, Ordering::SeqCst);
                             Ok(())
-                        },
-                        Err(e) => Err(e),
+                        }
                     }
                 });
 
