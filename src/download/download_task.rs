@@ -102,7 +102,7 @@ impl DownloadTask {
     ) -> PyResult<()> {
         let url = format!("{}/api/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename);
         let mut request = client.get(&url);
-        if let Some(token) = token {
+        if let Some(ref token) = token {
             request = request.header("Authorization", format!("Bearer {}", token));
         }
 
@@ -114,7 +114,7 @@ impl DownloadTask {
         if response.is_err() || !response.as_ref().unwrap().status().is_success() {
             let model_url = format!("{}/api/models/{}/resolve/main/{}", endpoint, model_id, file.rfilename);
             let mut model_request = client.get(&model_url);
-            if let Some(token) = &token {
+            if let Some(ref token) = token {
                 model_request = model_request.header("Authorization", format!("Bearer {}", token));
             }
             response = model_request.send().await;
