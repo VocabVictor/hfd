@@ -367,14 +367,14 @@ impl ModelDownloader {
         let total_size = response.content_length().unwrap_or(0);
         
         // 创建文件
-        let mut file = fs::File::create(&file_path)?;
+        let mut output_file = fs::File::create(&file_path)?;
         let mut downloaded: u64 = 0;
         let mut stream = response.bytes_stream();
 
         // 下载文件内容
         while let Some(item) = stream.next().await {
             let chunk = item?;
-            file.write_all(&chunk)?;
+            output_file.write_all(&chunk)?;
             downloaded += chunk.len() as u64;
             
             // 打印下载进度
