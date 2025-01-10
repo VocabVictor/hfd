@@ -12,7 +12,8 @@ CURRENT_VERSION=$(cat Cargo.toml | grep '^version =' | sed 's/version = "\(.*\)"
 
 # git 提交
 git add .
-git commit -m "update"
+git commit -m "update something [skip actions]"
+git push
 
 # 构建当前平台的 wheel
 echo "构建 wheel..."

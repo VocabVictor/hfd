@@ -1,11 +1,11 @@
 mod types;
 mod utils;
-mod downloader;
+mod download;
 mod cli;
 mod config;
 
 use pyo3::prelude::*;
-use crate::downloader::ModelDownloader;
+use crate::download::ModelDownloader;
 
 #[pymodule]
 fn hfd(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
