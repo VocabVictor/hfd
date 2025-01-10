@@ -8,14 +8,22 @@ use serde_json::Value;
 impl ModelDownloader {
     pub(crate) async fn prepare_download_list(&self, repo_info: &RepoInfo, model_id: &str, base_path: &PathBuf) 
         -> PyResult<(Vec<FileInfo>, u64)> {
+        println!("Debug: Starting prepare_download_list");
+        println!("Debug: Initial siblings count: {}", repo_info.siblings.len());
+        println!("Debug: Initial files count: {}", repo_info.files.len());
+        
         // 合并 siblings 和 files 字段
         let mut all_files = repo_info.siblings.clone();
         all_files.extend(repo_info.files.clone());
 
+        println!("Debug: Combined files count: {}", all_files.len());
+
         // 如果两个列表都为空，可能需要从其他字段获取文件信息
         if all_files.is_empty() {
+            println!("Debug: No files found in siblings or files, checking tree");
             // 尝试从 extra 中查找可能的文件列表
             if let Some(Value::Array(files)) = repo_info.extra.get("tree") {
+                println!("Debug: Found tree with {} entries", files.len());
                 for file in files {
                     if let Some(path) = file.get("path").and_then(|v| v.as_str()) {
                         let size = file.get("size")
@@ -27,6 +35,10 @@ impl ModelDownloader {
                         });
                     }
                 }
+                println!("Debug: Added {} files from tree", all_files.len());
+            } else {
+                println!("Debug: No tree found in extra");
+                println!("Debug: Extra content: {:?}", repo_info.extra);
             }
         }
 
@@ -34,6 +46,11 @@ impl ModelDownloader {
             .filter(|file| self.should_download_file(&file.rfilename))
             .collect();
         
+        println!("Debug: Files after filtering: {}", files_to_process.len());
+        if !files_to_process.is_empty() {
+            println!("Debug: First file: {}", files_to_process[0].rfilename);
+        }
+
         // 并发获取文件大小
         let mut size_fetch_tasks = Vec::new();
         for file in &files_to_process {
@@ -66,6 +83,7 @@ impl ModelDownloader {
         }
 
         let size_results = futures::future::join_all(size_fetch_tasks).await;
+        println!("Debug: Size fetch tasks completed: {}", size_results.len());
         
         // 更新文件大小信息
         for result in size_results {
@@ -88,6 +106,7 @@ impl ModelDownloader {
             if let Ok(metadata) = fs::metadata(&file_path) {
                 if let Some(expected_size) = file.size {
                     if metadata.len() == expected_size {
+                        println!("Debug: Skipping already downloaded file: {}", file.rfilename);
                         continue;  // 跳过已下载完成的文件
                     }
                 }
@@ -98,6 +117,9 @@ impl ModelDownloader {
                 files_to_download.push(file);
             }
         }
+
+        println!("Debug: Final files to download: {}", files_to_download.len());
+        println!("Debug: Total size to download: {} bytes", total_size);
 
         // 按文件名排序，并确保没有重复
         files_to_download.sort_by(|a, b| a.rfilename.cmp(&b.rfilename));
