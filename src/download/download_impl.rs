@@ -147,26 +147,28 @@ impl ModelDownloader {
                     let _permit = semaphore.acquire().await.map_err(|e| format!("获取信号量失败: {}", e))?;
 
                     select! {
-                        download_result = if total_size <= SMALL_FILE_THRESHOLD {
-                            Self::download_small_file(
-                                &client,
-                                &file_url,
-                                &file_path,
-                                auth_token.clone(),
-                                pb.clone(),
-                            )
-                        } else {
-                            Self::download_file_with_chunks(
-                                &client,
-                                file_url.clone(),
-                                file_path.clone(),
-                                total_size,
-                                0,
-                                MAX_RETRIES,
-                                auth_token.clone(),
-                                pb.clone(),
-                                running.clone(),
-                            )
+                        download_result = async {
+                            if total_size <= SMALL_FILE_THRESHOLD {
+                                Self::download_small_file(
+                                    &client,
+                                    &file_url,
+                                    &file_path,
+                                    auth_token.clone(),
+                                    pb.clone(),
+                                ).await
+                            } else {
+                                Self::download_file_with_chunks(
+                                    &client,
+                                    file_url.clone(),
+                                    file_path.clone(),
+                                    total_size,
+                                    0,
+                                    MAX_RETRIES,
+                                    auth_token.clone(),
+                                    pb.clone(),
+                                    running.clone(),
+                                ).await
+                            }
                         } => {
                             match download_result {
                                 Ok(_) => {
@@ -256,7 +258,7 @@ impl ModelDownloader {
         let mut stream = response.bytes_stream();
         let mut buffer = Vec::with_capacity(8 * 1024 * 1024); // 8MB buffer
         let mut last_progress = std::time::Instant::now();
-        let mut chunk_downloaded = 0u64;
+        let mut _downloaded = 0u64; // 改为 _downloaded 表示有意不使用
 
         while let Some(chunk_result) = stream.next().await {
             if !running.load(Ordering::SeqCst) {
@@ -265,7 +267,7 @@ impl ModelDownloader {
 
             let chunk = chunk_result.map_err(|e| format!("读取响应失败: {}", e))?;
             buffer.extend_from_slice(&chunk);
-            chunk_downloaded += chunk.len() as u64;
+            _downloaded += chunk.len() as u64;
             
             let now = std::time::Instant::now();
             if now.duration_since(last_progress).as_secs() > 60 {
@@ -335,12 +337,12 @@ impl ModelDownloader {
         let mut stream = response.bytes_stream();
         let mut buffer = Vec::with_capacity(8 * 1024 * 1024); // 8MB buffer
         let mut last_progress = std::time::Instant::now();
-        let mut downloaded = 0u64;
+        let mut _downloaded = 0u64; // 改为 _downloaded 表示有意不使用
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| format!("读取响应失败: {}", e))?;
             buffer.extend_from_slice(&chunk);
-            downloaded += chunk.len() as u64;
+            _downloaded += chunk.len() as u64;
             
             let now = std::time::Instant::now();
             if now.duration_since(last_progress).as_secs() > 60 {
@@ -350,7 +352,7 @@ impl ModelDownloader {
             if buffer.len() >= 8 * 1024 * 1024 { // 8MB
                 file.write_all(&buffer)
                     .map_err(|e| format!("写入文件失败: {}", e))?;
-                pb.set_position(downloaded);
+                pb.set_position(_downloaded);
                 buffer.clear();
                 last_progress = now;
             }
@@ -359,7 +361,7 @@ impl ModelDownloader {
         if !buffer.is_empty() {
             file.write_all(&buffer)
                 .map_err(|e| format!("写入文件失败: {}", e))?;
-            pb.set_position(downloaded);
+            pb.set_position(_downloaded);
         }
 
         file.sync_all()
