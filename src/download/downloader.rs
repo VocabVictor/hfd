@@ -1,4 +1,4 @@
-use crate::types::AuthInfo;
+use crate::types::{AuthInfo, RepoInfo, RepoFiles};
 use crate::config::Config;
 use pyo3::prelude::*;
 use reqwest::Client;
@@ -17,6 +17,7 @@ pub struct ModelDownloader {
     pub(crate) exclude_patterns: Vec<String>,
     pub(crate) running: Arc<AtomicBool>,
     pub(crate) auth: AuthInfo,
+    pub(crate) repo_info: Option<RepoInfo>,
 }
 
 #[pymethods]
@@ -74,6 +75,7 @@ impl ModelDownloader {
             auth: AuthInfo {
                 token,
             },
+            repo_info: None,
         })
     }
 
@@ -82,14 +84,19 @@ impl ModelDownloader {
         self.runtime.block_on(self.download_model(model_id))
     }
 
-    fn get_file_url(&self, model_id: &str, filename: &str) -> String {
-        match &self.repo_info.files {
-            RepoFiles::Model { .. } => {
-                format!("{}/{}/resolve/main/{}", self.config.endpoint, model_id, filename)
-            }
-            RepoFiles::Dataset { .. } => {
-                format!("{}/datasets/{}/resolve/main/{}", self.config.endpoint, model_id, filename)
-            }
+    pub(crate) fn get_file_url(&self, model_id: &str, filename: &str) -> PyResult<String> {
+        if let Some(repo_info) = &self.repo_info {
+            let url = match &repo_info.files {
+                RepoFiles::Model { .. } => {
+                    format!("{}/{}/resolve/main/{}", self.config.endpoint, model_id, filename)
+                }
+                RepoFiles::Dataset { .. } => {
+                    format!("{}/datasets/{}/resolve/main/{}", self.config.endpoint, model_id, filename)
+                }
+            };
+            Ok(url)
+        } else {
+            Err(pyo3::exceptions::PyRuntimeError::new_err("Repository info not initialized"))
         }
     }
 } 

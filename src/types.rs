@@ -1,6 +1,3 @@
-use serde::Deserialize;
-use serde_json::Value;
-
 #[derive(Debug, Clone)]
 pub struct AuthInfo {
     pub token: Option<String>,

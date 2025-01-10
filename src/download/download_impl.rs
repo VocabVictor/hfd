@@ -1,5 +1,6 @@
 use super::downloader::ModelDownloader;
 use crate::utils::{create_progress_bar, print_status, clear_progress};
+use crate::types::FileInfo;
 use pyo3::prelude::*;
 use std::fs::{self, OpenOptions};
 use std::io::{Write, Read};
@@ -344,7 +345,8 @@ impl ModelDownloader {
         }
 
         // 构建下载 URL
-        let file_url = self.get_file_url(model_id, &file.rfilename);
+        let file_url = self.get_file_url(model_id, &file.rfilename)
+            .map_err(|e| format!("获取下载URL失败: {}", e))?;
         println!("Debug: Downloading from URL: {}", file_url);
 
         // 创建请求
