@@ -41,4 +41,4 @@ strip = true
 compatibility = "manylinux2014"
 
 [project.scripts]
-hfd = "hfd:main"
+hfd = "hfd:download_model"

@@ -17,7 +17,6 @@ pub struct ModelDownloader {
     pub(crate) cache_dir: String,
     pub(crate) running: Arc<AtomicBool>,
     pub(crate) repo_info: Option<serde_json::Value>,
-    pub(crate) proxy_enabled: bool,
 }
 
 impl ModelDownloader {
@@ -75,38 +74,7 @@ impl ModelDownloader {
             auth: Auth { token },
             running,
             repo_info: None,
-            proxy_enabled: false,
         })
-    }
-
-    pub fn enable_proxy(&mut self) -> PyResult<()> {
-        let proxy_url = std::env::var("http_proxy")
-            .or_else(|_| std::env::var("HTTP_PROXY"))
-            .or_else(|_| std::env::var("https_proxy"))
-            .or_else(|_| std::env::var("HTTPS_PROXY"))
-            .map_err(|_| pyo3::exceptions::PyRuntimeError::new_err("No proxy environment variable found"))?;
-
-        let client = Client::builder()
-            .pool_max_idle_per_host(self.config.connections_per_download * 2)
-            .pool_idle_timeout(std::time::Duration::from_secs(600))
-            .tcp_keepalive(std::time::Duration::from_secs(60))
-            .tcp_nodelay(true)
-            .http2_prior_knowledge()
-            .timeout(std::time::Duration::from_secs(600))
-            .connect_timeout(std::time::Duration::from_secs(60))
-            .connection_verbose(true)
-            .use_rustls_tls()
-            .http2_keep_alive_interval(std::time::Duration::from_secs(30))
-            .http2_keep_alive_timeout(std::time::Duration::from_secs(60))
-            .http2_adaptive_window(true)
-            .proxy(reqwest::Proxy::all(&proxy_url)
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create proxy: {}", e)))?)
-            .build()
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create HTTP client: {}", e)))?;
-
-        self.client = client;
-        self.proxy_enabled = true;
-        Ok(())
     }
 
     pub(crate) fn download_file(&self, task: DownloadTask, model_id: &str) -> PyResult<()> {
