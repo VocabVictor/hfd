@@ -79,7 +79,7 @@ impl ModelDownloader {
             };
 
             // 执行下载任务
-            if let Err(e) = self.download_file(task, model_id) {
+            if let Err(e) = self.download_file(task, model_id).await {
                 return Err(e);
             }
         }
@@ -90,7 +90,7 @@ impl ModelDownloader {
             let task = DownloadTask::new_folder(folder.clone(), files, base_path.clone());
 
             // 执行下载任务
-            if let Err(e) = self.download_folder(task, model_id) {
+            if let Err(e) = self.download_folder(task, model_id).await {
                 return Err(e);
             }
         }
