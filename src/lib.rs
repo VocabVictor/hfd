@@ -13,7 +13,7 @@ pub use download::downloader::ModelDownloader;
 
 #[pyfunction]
 #[pyo3(signature = (model_id, is_dataset=false, cache_dir=None, include_patterns=None, exclude_patterns=None, token=None))]
-pub fn download(
+pub fn download_file(
     model_id: String,
     is_dataset: bool,
     cache_dir: Option<String>,
@@ -41,34 +41,11 @@ pub fn download(
 }
 
 #[pyfunction]
-#[pyo3(signature = (model_id, cache_dir=None, include_patterns=None, exclude_patterns=None, token=None))]
-pub fn download_model(
-    model_id: String,
-    cache_dir: Option<String>,
-    include_patterns: Option<Vec<String>>,
-    exclude_patterns: Option<Vec<String>>,
-    token: Option<String>,
-) -> PyResult<String> {
-    download(model_id, false, cache_dir, include_patterns, exclude_patterns, token)
-}
-
-#[pyfunction]
-#[pyo3(signature = (model_id, cache_dir=None, include_patterns=None, exclude_patterns=None, token=None))]
-pub fn download_dataset(
-    model_id: String,
-    cache_dir: Option<String>,
-    include_patterns: Option<Vec<String>>,
-    exclude_patterns: Option<Vec<String>>,
-    token: Option<String>,
-) -> PyResult<String> {
-    download(model_id, true, cache_dir, include_patterns, exclude_patterns, token)
-}
-
-#[pyfunction]
 pub fn main() -> PyResult<()> {
     if let Some(args) = cli::parse_args() {
-        match download_model(
+        match download_file(
             args.model_id.to_string(),
+            false,  // 默认下载模型
             args.local_dir,
             args.include_patterns,
             args.exclude_patterns,
@@ -83,9 +60,7 @@ pub fn main() -> PyResult<()> {
 
 #[pymodule]
 fn hfd(py: Python<'_>, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(download, m)?)?;
-    m.add_function(wrap_pyfunction!(download_model, m)?)?;
-    m.add_function(wrap_pyfunction!(download_dataset, m)?)?;
+    m.add_function(wrap_pyfunction!(download_file, m)?)?;
     m.add_function(wrap_pyfunction!(main, m)?)?;
     Ok(())
 } 
