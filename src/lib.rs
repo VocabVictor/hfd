@@ -11,6 +11,8 @@ use crate::download::ModelDownloader;
 
 #[pyfunction]
 fn download_model(model_id: &str, local_dir: Option<String>, token: Option<String>) -> PyResult<String> {
+    println!("Starting download for model: {}", model_id);
+    
     // 创建配置
     let mut config = Config::default();
     if let Some(dir) = local_dir {
@@ -40,15 +42,20 @@ fn download_model(model_id: &str, local_dir: Option<String>, token: Option<Strin
 }
 
 #[pyfunction]
-fn main() -> PyResult<()> {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() < 2 {
+fn main(args: Option<Vec<String>>) -> PyResult<()> {
+    let args = args.unwrap_or_else(|| vec![]);
+    
+    if args.is_empty() || args.contains(&"-h".to_string()) || args.contains(&"--help".to_string()) {
         cli::print_help();
         return Ok(());
     }
 
-    let model_id = &args[1];
-    download_model(model_id, None, None)?;
+    let model_id = &args[0];
+    println!("Processing model ID: {}", model_id);
+    match download_model(model_id, None, None) {
+        Ok(result) => println!("Download completed: {}", result),
+        Err(e) => println!("Error during download: {:?}", e),
+    }
     Ok(())
 }
 
