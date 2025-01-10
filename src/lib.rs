@@ -5,8 +5,6 @@ mod cli;
 mod config;
 
 use pyo3::prelude::*;
-use crate::types::AuthInfo;
-use crate::config::Config;
 use crate::download::ModelDownloader;
 use tokio::runtime::Runtime;
 
@@ -31,7 +29,13 @@ pub fn download_model(
 #[pyfunction]
 fn main() -> PyResult<()> {
     if let Some(args) = cli::parse_args() {
-        match download_model(&args.model_id, args.local_dir, args.hf_token) {
+        match download_model(
+            &args.model_id,
+            args.local_dir,
+            None,  // include_patterns
+            None,  // exclude_patterns
+            args.hf_token,
+        ) {
             Ok(result) => println!("Download completed: {}", result),
             Err(e) => println!("Error during download: {:?}", e),
         }

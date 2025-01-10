@@ -81,7 +81,8 @@ impl ModelDownloader {
 
     pub fn download(&mut self, model_id: &str) -> PyResult<String> {
         self.running.store(true, Ordering::SeqCst);
-        self.runtime.block_on(self.download_model(model_id))
+        let runtime = &self.runtime;
+        runtime.block_on(self.download_model(model_id))
     }
 
     pub(crate) fn get_file_url(&self, model_id: &str, filename: &str) -> PyResult<String> {
