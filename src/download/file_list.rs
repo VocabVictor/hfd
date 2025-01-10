@@ -3,6 +3,7 @@ use crate::types::{RepoInfo, FileInfo};
 use pyo3::prelude::*;
 use std::path::PathBuf;
 use std::fs;
+use serde_json::Value;
 
 impl ModelDownloader {
     pub(crate) async fn prepare_download_list(&self, repo_info: &RepoInfo, model_id: &str, base_path: &PathBuf) 

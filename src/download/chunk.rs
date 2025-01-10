@@ -264,7 +264,7 @@ impl ModelDownloader {
         let mut stream = response.bytes_stream();
         let mut buffer = Vec::with_capacity(8 * 1024 * 1024); // 8MB buffer
         let mut last_progress = std::time::Instant::now();
-        let mut downloaded = 0u64;
+        let mut _downloaded = 0u64;  // 使用下划线前缀表示有意不使用
 
         while let Some(chunk_result) = stream.next().await {
             if !running.load(Ordering::SeqCst) {
@@ -273,7 +273,7 @@ impl ModelDownloader {
 
             let chunk = chunk_result.map_err(|e| format!("读取响应失败: {}", e))?;
             buffer.extend_from_slice(&chunk);
-            downloaded += chunk.len() as u64;
+            _downloaded += chunk.len() as u64;
             
             let now = std::time::Instant::now();
             if now.duration_since(last_progress).as_secs() > 60 {
