@@ -4,7 +4,7 @@ use pyo3::prelude::*;
 use std::fs::{self, OpenOptions};
 use std::io::{Write, Seek, Read};
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use futures::StreamExt;
 use flate2::read::GzDecoder;

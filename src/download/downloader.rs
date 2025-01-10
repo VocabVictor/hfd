@@ -1,4 +1,4 @@
-use crate::types::{RepoInfo, AuthInfo, FileInfo};
+use crate::types::AuthInfo;
 use crate::config::Config;
 use pyo3::prelude::*;
 use reqwest::Client;
