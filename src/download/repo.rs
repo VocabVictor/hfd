@@ -1,54 +1,75 @@
-use crate::types::RepoInfo;
-use pyo3::prelude::*;
 use reqwest::Client;
-use crate::types::AuthInfo;
+use crate::types::{FileInfo, RepoInfo};
+use crate::auth::Auth;
+use pyo3::prelude::*;
 
-pub(crate) async fn get_repo_info(
+pub async fn get_repo_info(
     client: &Client,
     endpoint: &str,
     model_id: &str,
-    auth: &AuthInfo,
+    auth: &Auth,
 ) -> PyResult<RepoInfo> {
-    // 先尝试作为模型获取
-    let model_url = format!("{}/api/models/{}", endpoint, model_id);
-    println!("Debug: Trying model endpoint: {}", model_url);
-    
-    let mut request = client.get(&model_url);
+    // 检查是否是数据集
+    let is_dataset = model_id.contains("/datasets/") || model_id.contains("datasets/");
+    let clean_id = if is_dataset {
+        model_id.replace("/datasets/", "/").replace("datasets/", "")
+    } else {
+        model_id.to_string()
+    };
+
+    // 构建API URL
+    let api_url = if is_dataset {
+        format!("{}/api/datasets/{}", endpoint, clean_id)
+    } else {
+        format!("{}/api/models/{}", endpoint, clean_id)
+    };
+
+    // 发送请求
+    let mut request = client.get(&api_url);
     if let Some(token) = &auth.token {
         request = request.header("Authorization", format!("Bearer {}", token));
     }
-    
-    let response = request.send().await;
-    
-    match response {
-        Ok(resp) if resp.status().is_success() => {
-            let repo_info: RepoInfo = resp.json().await
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to parse repo info: {}", e)))?;
-            Ok(repo_info)
-        }
-        _ => {
-            // 如果模型获取失败，尝试作为数据集获取
-            let dataset_url = format!("{}/api/datasets/{}", endpoint, model_id);
-            println!("Debug: Trying dataset endpoint: {}", dataset_url);
-            
-            let mut request = client.get(&dataset_url);
-            if let Some(token) = &auth.token {
-                request = request.header("Authorization", format!("Bearer {}", token));
-            }
-            
-            let response = request.send().await
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to fetch repo info: {}", e)))?;
-            
-            if !response.status().is_success() {
-                return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
-                    "Failed to fetch repo info from both model and dataset endpoints. Please check:\n1. Repository ID '{}' is correct\n2. You have proper access token for private repos\n3. The repository exists",
-                    model_id
-                )));
-            }
-            
-            let repo_info: RepoInfo = response.json().await
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to parse repo info: {}", e)))?;
-            Ok(repo_info)
-        }
-    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to get repo info: {}", e)))?
+        .error_for_status()
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("HTTP error: {}", e)))?;
+
+    let json = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to parse response: {}", e)))?;
+
+    // 解析文件列表
+    let files = if let Some(siblings) = json["siblings"].as_array() {
+        siblings.iter()
+            .filter_map(|file| {
+                file["rfilename"].as_str().map(|name| FileInfo {
+                    rfilename: name.to_string(),
+                    size: None,
+                })
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    // 构建仓库信息
+    let repo_info = RepoInfo {
+        model_endpoint: if is_dataset {
+            None
+        } else {
+            Some(format!("{}/{}", endpoint, model_id))
+        },
+        dataset_endpoint: if is_dataset {
+            Some(format!("{}/datasets/{}", endpoint, clean_id))
+        } else {
+            None
+        },
+        files,
+    };
+
+    Ok(repo_info)
 } 

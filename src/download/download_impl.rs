@@ -1,9 +1,9 @@
 use super::downloader::ModelDownloader;
 use crate::download::repo;
+use crate::download::DownloadTask;
 use pyo3::prelude::*;
 use std::path::PathBuf;
-use indicatif::{ProgressBar, ProgressStyle};
-use std::sync::atomic::Ordering;
+use std::collections::HashMap;
 
 impl ModelDownloader {
     pub(crate) async fn download_model(&mut self, model_id: &str) -> PyResult<String> {
@@ -26,48 +26,75 @@ impl ModelDownloader {
         println!("Found {} files to download, total size: {:.2} MB", 
             files_to_download.len(), total_size as f64 / 1024.0 / 1024.0);
 
-        // 创建总进度条
-        let pb = ProgressBar::new(total_size);
-        pb.set_style(ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
-            .unwrap()
-            .progress_chars("#>-"));
+        // 分离根目录文件和子目录文件
+        let mut root_files = Vec::new();
+        let mut folder_groups: HashMap<String, Vec<_>> = HashMap::new();
 
-        // 保存仓库信息以供后续使用
-        self.repo_info = Some(repo_info);
-
-        // 下载所有文件
         for file in files_to_download {
-            if !self.running.load(Ordering::SeqCst) {
-                pb.finish_with_message("Download cancelled".to_string());
-                return Ok("Download cancelled".to_string());
-            }
-
-            let file_path = base_path.join(&file.rfilename);
-            if let Some(size) = file.size {
-                let file_url = self.get_file_url(model_id, &file.rfilename)?;
-                pb.set_message(format!("Downloading {}", file.rfilename));
-
-                // 使用分块下载
-                if let Err(e) = Self::download_file_with_chunks(
-                    &self.client,
-                    file_url,
-                    file_path.clone(),
-                    size,
-                    self.config.chunk_size,
-                    self.config.max_retries,
-                    self.auth.token.clone(),
-                    pb.clone(),
-                    self.running.clone(),
-                ).await {
-                    let error_msg = format!("Failed to download {}: {}", file.rfilename, e);
-                    pb.finish_with_message(error_msg.clone());
-                    return Err(pyo3::exceptions::PyRuntimeError::new_err(error_msg));
+            let path = PathBuf::from(&file.rfilename);
+            if let Some(parent) = path.parent() {
+                if !parent.as_os_str().is_empty() {
+                    // 子目录文件
+                    let folder = parent.to_string_lossy().into_owned();
+                    folder_groups.entry(folder).or_default().push(file);
+                } else {
+                    // 根目录文件
+                    root_files.push(file);
                 }
+            } else {
+                // 根目录文件
+                root_files.push(file);
             }
         }
 
-        pb.finish_with_message("Download completed".to_string());
+        // 保存仓库信息以供后续使用
+        self.repo_info = Some(serde_json::to_value(&repo_info)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?);
+
+        // 下载根目录文件
+        for file in root_files {
+            let file_path = base_path.join(&file.rfilename);
+            let task = if let Some(size) = file.size {
+                if size > self.config.chunk_size as u64 {
+                    DownloadTask::new_chunked_file(
+                        file.clone(),
+                        file_path,
+                        self.config.chunk_size,
+                        self.config.max_retries,
+                        "root",
+                    )
+                } else {
+                    DownloadTask::new_small_file(
+                        file.clone(),
+                        file_path,
+                        "root",
+                    )
+                }
+            } else {
+                DownloadTask::new_small_file(
+                    file,
+                    file_path,
+                    "root",
+                )
+            };
+
+            // 执行下载任务
+            if let Err(e) = self.download_file(task, model_id) {
+                return Err(e);
+            }
+        }
+
+        // 下载子目录文件
+        for (folder, files) in folder_groups {
+            // 创建文件夹下载任务
+            let task = DownloadTask::new_folder(folder.clone(), files, base_path.clone());
+
+            // 执行下载任务
+            if let Err(e) = self.download_folder(task, model_id) {
+                return Err(e);
+            }
+        }
+
         Ok(format!("Downloaded model {} to {}", model_id, base_path.display()))
     }
 } 

@@ -1,8 +1,11 @@
+mod chunk;
 mod downloader;
 mod file_filter;
-mod repo;
 mod file_list;
+mod progress;
+mod repo;
 mod download_impl;
-mod chunk;
+mod download_task;
 
-pub use downloader::ModelDownloader; 
+pub use downloader::ModelDownloader;
+pub use download_task::DownloadTask; 
