@@ -81,8 +81,11 @@ impl ModelDownloader {
 
     pub fn download(&mut self, model_id: &str) -> PyResult<String> {
         self.running.store(true, Ordering::SeqCst);
-        let runtime = &self.runtime;
-        runtime.block_on(self.download_model(model_id))
+        let model_id = model_id.to_string();
+        let future = async move {
+            self.download_model(&model_id).await
+        };
+        self.runtime.block_on(future)
     }
 
     pub(crate) fn get_file_url(&self, model_id: &str, filename: &str) -> PyResult<String> {
