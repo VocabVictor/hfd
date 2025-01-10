@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use walkdir::WalkDir;
 use tokio;
 
-pub async fn get_file_list(client: &Client, endpoint: &str, _model_id: &str, token: Option<String>, is_dataset: bool) -> Result<Vec<FileInfo>, String> {
+pub async fn get_file_list(client: &Client, endpoint: &str, model_id: &str, token: Option<String>, is_dataset: bool) -> Result<Vec<FileInfo>, String> {
     let mut files = Vec::new();
     let mut tasks = Vec::new();
     let mut file_map = HashMap::new();
@@ -27,11 +27,12 @@ pub async fn get_file_list(client: &Client, endpoint: &str, _model_id: &str, tok
             let endpoint = endpoint.to_string();
             let token = token.clone();
             let rfilename_clone = rfilename.clone();
+            let model_id = model_id.to_string();
             let task = tokio::spawn(async move {
                 let url = if is_dataset {
-                    format!("{}/datasets/{}/resolve/main/{}", endpoint, _model_id, rfilename)
+                    format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, rfilename)
                 } else {
-                    format!("{}/{}/resolve/main/{}", endpoint, _model_id, rfilename)
+                    format!("{}/{}/resolve/main/{}", endpoint, model_id, rfilename)
                 };
 
                 let mut request = client.head(&url);

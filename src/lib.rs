@@ -10,6 +10,7 @@ pub use auth::Auth;
 pub use config::Config;
 pub use download::downloader::ModelDownloader;
 
+#[pyfunction]
 pub fn download_model(
     cache_dir: Option<String>,
     model_id: String,
@@ -32,6 +33,7 @@ pub fn download_model(
     })
 }
 
+#[pyfunction]
 pub fn download_dataset(
     cache_dir: Option<String>,
     model_id: String,
@@ -72,7 +74,7 @@ pub fn main() -> PyResult<()> {
 }
 
 #[pymodule]
-fn hfd(_py: Python, m: &PyModule) -> PyResult<()> {
+fn hfd(py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(download_model, m)?)?;
     m.add_function(wrap_pyfunction!(download_dataset, m)?)?;
     Ok(())
