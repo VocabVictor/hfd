@@ -1,10 +1,12 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use std::sync::Arc;
 
+#[allow(dead_code)]
 pub struct DownloadProgress {
     pub progress_bar: Arc<ProgressBar>,
 }
 
+#[allow(dead_code)]
 impl DownloadProgress {
     pub fn new_folder_progress(folder_name: &str, total_size: u64) -> Self {
         let pb = ProgressBar::new(total_size);

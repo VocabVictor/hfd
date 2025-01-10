@@ -14,6 +14,7 @@ pub struct RepoInfo {
 }
 
 impl RepoInfo {
+    #[allow(dead_code)]
     pub fn is_dataset(&self) -> bool {
         self.dataset_endpoint.is_some()
     }

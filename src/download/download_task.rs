@@ -11,12 +11,15 @@ use futures::StreamExt;
 use std::pin::Pin;
 use std::future::Future;
 
+#[derive(Debug)]
 pub enum DownloadTask {
+    #[allow(dead_code)]
     SmallFile {
         file: FileInfo,
         path: PathBuf,
         group: String,
     },
+    #[allow(dead_code)]
     ChunkedFile {
         file: FileInfo,
         path: PathBuf,
@@ -24,6 +27,7 @@ pub enum DownloadTask {
         max_retries: usize,
         group: String,
     },
+    #[allow(dead_code)]
     Folder {
         name: String,
         files: Vec<FileInfo>,
@@ -31,6 +35,7 @@ pub enum DownloadTask {
     },
 }
 
+#[allow(dead_code)]
 impl DownloadTask {
     pub fn new_small_file(file: FileInfo, path: PathBuf, group: &str) -> Self {
         Self::SmallFile {

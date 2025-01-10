@@ -32,4 +32,15 @@ impl ModelDownloader {
 
         Ok((files_to_download, total_size))
     }
+
+    pub async fn get_file_list(
+        &self,
+        _model_id: &str,
+        repo_info: &RepoInfo,
+    ) -> PyResult<Vec<FileInfo>> {
+        // Implementation for get_file_list method
+        // This method is currently empty as per the code block
+        // You can implement this method based on your requirements
+        Ok(Vec::new())
+    }
 } 

@@ -41,13 +41,29 @@ impl ModelDownloader {
         })
     }
 
-    pub(crate) fn download_file(&mut self, task: DownloadTask, model_id: &str) -> PyResult<()> {
-        // TODO: 实现文件下载
-        Ok(())
+    pub async fn download_file(
+        &self,
+        task: DownloadTask,
+        model_id: &str,
+    ) -> PyResult<()> {
+        task.execute(
+            &self.client,
+            self.auth.token.clone(),
+            &self.config.endpoint,
+            model_id,
+        ).await
     }
 
-    pub(crate) fn download_folder(&mut self, task: DownloadTask, model_id: &str) -> PyResult<()> {
-        // TODO: 实现文件夹下载
-        Ok(())
+    pub async fn download_folder(
+        &self,
+        task: DownloadTask,
+        model_id: &str,
+    ) -> PyResult<()> {
+        task.execute(
+            &self.client,
+            self.auth.token.clone(),
+            &self.config.endpoint,
+            model_id,
+        ).await
     }
 } 

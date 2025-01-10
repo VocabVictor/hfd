@@ -7,6 +7,7 @@ use futures::StreamExt;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
+#[allow(dead_code)]
 pub async fn download_file_with_chunks(
     client: &Client,
     url: String,
@@ -40,7 +41,7 @@ pub async fn download_file_with_chunks(
 
         request = request.header("Range", format!("bytes={}-{}", start, end - 1));
 
-        let mut response = match request.send().await {
+        let response = match request.send().await {
             Ok(resp) => resp,
             Err(e) => {
                 if current_retry < max_retries {
