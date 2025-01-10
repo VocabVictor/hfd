@@ -1,12 +1,15 @@
 use crate::types::FileInfo;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::Client;
 use pyo3::prelude::*;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
+use futures::StreamExt;
+use std::pin::Pin;
+use std::future::Future;
 
 pub enum DownloadTask {
     SmallFile {
@@ -61,28 +64,29 @@ impl DownloadTask {
         }
     }
 
-    pub async fn execute(
-        &self,
-        client: &Client,
+    pub fn execute<'a>(
+        self,
+        client: &'a Client,
         token: Option<String>,
-        endpoint: &str,
-        model_id: &str,
-    ) -> PyResult<()> {
-        match self {
-            Self::SmallFile { file, path, group } => {
-                self.download_small_file(client, file, path, token, endpoint, model_id, group).await
+        endpoint: &'a str,
+        model_id: &'a str,
+    ) -> Pin<Box<dyn Future<Output = PyResult<()>> + 'a>> {
+        Box::pin(async move {
+            match self {
+                Self::SmallFile { file, path, group } => {
+                    Self::download_small_file(client, &file, &path, token, endpoint, model_id, &group).await
+                }
+                Self::ChunkedFile { file, path, chunk_size, max_retries, group } => {
+                    Self::download_chunked_file(client, &file, &path, chunk_size, max_retries, token, endpoint, model_id, &group).await
+                }
+                Self::Folder { name, files, base_path } => {
+                    Self::download_folder(client, &name, &files, &base_path, token, endpoint, model_id).await
+                }
             }
-            Self::ChunkedFile { file, path, chunk_size, max_retries, group } => {
-                self.download_chunked_file(client, file, path, *chunk_size, *max_retries, token, endpoint, model_id, group).await
-            }
-            Self::Folder { name, files, base_path } => {
-                self.download_folder(client, name, files, base_path, token, endpoint, model_id).await
-            }
-        }
+        })
     }
 
     async fn download_small_file(
-        &self,
         client: &Client,
         file: &FileInfo,
         path: &PathBuf,
@@ -120,7 +124,7 @@ impl DownloadTask {
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create file: {}", e)))?;
 
         let mut stream = response.bytes_stream();
-        while let Some(chunk) = futures::StreamExt::next(&mut stream).await {
+        while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to read chunk: {}", e)))?;
             file_handle.write_all(&chunk)
                 .await
@@ -133,7 +137,6 @@ impl DownloadTask {
     }
 
     async fn download_chunked_file(
-        &self,
         client: &Client,
         file: &FileInfo,
         path: &PathBuf,
@@ -177,7 +180,6 @@ impl DownloadTask {
     }
 
     async fn download_folder(
-        &self,
         client: &Client,
         name: &str,
         files: &[FileInfo],
@@ -196,23 +198,22 @@ impl DownloadTask {
         for file in files {
             let file_path = folder_path.join(file.rfilename.split('/').last().unwrap_or(&file.rfilename));
             if let Some(size) = file.size {
-                if size > 50 * 1024 * 1024 { // 50MB
-                    let task = Self::ChunkedFile {
+                let task = if size > 50 * 1024 * 1024 { // 50MB
+                    DownloadTask::ChunkedFile {
                         file: file.clone(),
                         path: file_path,
                         chunk_size: 16 * 1024 * 1024, // 16MB
                         max_retries: 3,
                         group: name.to_string(),
-                    };
-                    task.execute(client, token.clone(), endpoint, model_id).await?;
+                    }
                 } else {
-                    let task = Self::SmallFile {
+                    DownloadTask::SmallFile {
                         file: file.clone(),
                         path: file_path,
                         group: name.to_string(),
-                    };
-                    task.execute(client, token.clone(), endpoint, model_id).await?;
-                }
+                    }
+                };
+                task.execute(client, token.clone(), endpoint, model_id).await?;
             }
         }
 
