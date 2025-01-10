@@ -1,6 +1,7 @@
 use reqwest::Client;
 use crate::types::{FileInfo, RepoInfo};
 use crate::auth::Auth;
+use crate::config::Config;
 use pyo3::prelude::*;
 use serde_json::Value;
 use futures::future::join_all;
@@ -9,12 +10,12 @@ use std::sync::Arc;
 
 pub async fn get_repo_info(
     client: &Client,
-    endpoint: &str,
+    config: &Config,
     repo_id: &str,
     auth: &Auth,
 ) -> PyResult<RepoInfo> {
     // 先尝试作为 model 获取
-    let model_url = format!("{}/api/models/{}", endpoint, repo_id);
+    let model_url = format!("{}/api/models/{}", config.endpoint, repo_id);
     println!("Trying model URL: {}", model_url);
     let mut request = client.get(&model_url);
     if let Some(token) = &auth.token {
@@ -30,16 +31,16 @@ pub async fn get_repo_info(
             .await
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to parse repo info: {}", e)))?;
         
-        let files = extract_files(client, endpoint, repo_id, auth, &json, false).await?;
+        let files = extract_files(client, &config.endpoint, repo_id, auth, &json, false).await?;
         return Ok(RepoInfo {
-            model_endpoint: Some(format!("{}/{}", endpoint, repo_id)),
+            model_endpoint: Some(format!("{}/{}", config.endpoint, repo_id)),
             dataset_endpoint: None,
             files,
         });
     }
 
     // 如果不是 model，尝试作为 dataset 获取
-    let dataset_url = format!("{}/api/datasets/{}", endpoint, repo_id);
+    let dataset_url = format!("{}/api/datasets/{}", config.endpoint, repo_id);
     println!("Trying dataset URL: {}", dataset_url);
     let mut request = client.get(&dataset_url);
     if let Some(token) = &auth.token {
@@ -56,10 +57,10 @@ pub async fn get_repo_info(
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to parse repo info: {}", e)))?;
         
         println!("Dataset API response: {}", json);
-        let files = extract_files(client, endpoint, repo_id, auth, &json, true).await?;
+        let files = extract_files(client, &config.endpoint, repo_id, auth, &json, true).await?;
         return Ok(RepoInfo {
             model_endpoint: None,
-            dataset_endpoint: Some(format!("{}/datasets/{}", endpoint, repo_id)),
+            dataset_endpoint: Some(format!("{}/datasets/{}", config.endpoint, repo_id)),
             files,
         });
     }
