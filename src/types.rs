@@ -18,7 +18,9 @@ pub enum RepoFiles {
 pub struct RepoInfo {
     #[serde(flatten)]
     pub files: RepoFiles,
+    #[serde(default)]
     pub gated: serde_json::Value,
+    #[serde(default)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
