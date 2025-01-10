@@ -38,4 +38,4 @@ echo "pip install --index-url https://pypi.org/simple/ hfd==${CURRENT_VERSION}"
 micromamba run -n base pip uninstall hfd -y
 micromamba run -n base pip install "$LATEST_WHEEL"
 
-nohup hfd Wild-Heart/Disney-VideoGeneration-Dataset &> hfd.log &
+micromamba run -n base nohup hfd Wild-Heart/Disney-VideoGeneration-Dataset &> hfd.log &
