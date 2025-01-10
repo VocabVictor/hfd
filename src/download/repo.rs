@@ -3,6 +3,9 @@ use crate::types::{FileInfo, RepoInfo};
 use crate::auth::Auth;
 use pyo3::prelude::*;
 use serde_json::Value;
+use futures::future::join_all;
+use tokio::sync::Semaphore;
+use std::sync::Arc;
 
 pub async fn get_repo_info(
     client: &Client,
@@ -26,9 +29,9 @@ pub async fn get_repo_info(
             .await
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to parse repo info: {}", e)))?;
         
-        let files = extract_files(&json)?;
+        let files = extract_files(client, endpoint, repo_id, auth, &json, false).await?;
         return Ok(RepoInfo {
-            model_endpoint: Some(format!("{}/models/{}", endpoint, repo_id)),
+            model_endpoint: Some(format!("{}/{}", endpoint, repo_id)),
             dataset_endpoint: None,
             files,
         });
@@ -50,7 +53,7 @@ pub async fn get_repo_info(
             .await
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to parse repo info: {}", e)))?;
         
-        let files = extract_files(&json)?;
+        let files = extract_files(client, endpoint, repo_id, auth, &json, true).await?;
         return Ok(RepoInfo {
             model_endpoint: None,
             dataset_endpoint: Some(format!("{}/datasets/{}", endpoint, repo_id)),
@@ -65,20 +68,80 @@ pub async fn get_repo_info(
     )))
 }
 
-fn extract_files(json: &Value) -> PyResult<Vec<FileInfo>> {
+async fn extract_files(
+    client: &Client,
+    endpoint: &str,
+    repo_id: &str,
+    auth: &Auth,
+    json: &Value,
+    is_dataset: bool,
+) -> PyResult<Vec<FileInfo>> {
     let siblings = json["siblings"].as_array()
         .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No files found in repository"))?;
     
-    let files = siblings.iter()
-        .filter_map(|file| {
-            let rfilename = file["rfilename"].as_str()?;
-            let size = file["size"].as_u64();
-            Some(FileInfo {
-                rfilename: rfilename.to_string(),
-                size,
-            })
-        })
-        .collect();
-    
+    // 使用信号量限制并发数
+    let semaphore = Arc::new(Semaphore::new(10));
+    let client = Arc::new(client.clone());
+    let auth = Arc::new(auth.clone());
+
+    let mut tasks = Vec::new();
+    for file in siblings {
+        if let Some(rfilename) = file["rfilename"].as_str() {
+            let client = client.clone();
+            let auth = auth.clone();
+            let semaphore = semaphore.clone();
+            let rfilename = rfilename.to_string();
+            let endpoint = endpoint.to_string();
+            let repo_id = repo_id.to_string();
+
+            tasks.push(tokio::spawn(async move {
+                let _permit = semaphore.acquire().await.unwrap();
+                resolve_file_info(&client, &endpoint, &repo_id, &rfilename, &auth, is_dataset).await
+            }));
+        }
+    }
+
+    let results = join_all(tasks).await;
+    let mut files = Vec::new();
+    for result in results {
+        if let Ok(Ok(file_info)) = result {
+            files.push(file_info);
+        }
+    }
+
     Ok(files)
+}
+
+async fn resolve_file_info(
+    client: &Client,
+    endpoint: &str,
+    repo_id: &str,
+    rfilename: &str,
+    auth: &Auth,
+    is_dataset: bool,
+) -> PyResult<FileInfo> {
+    let url = if is_dataset {
+        format!("{}/datasets/{}/resolve/{}", endpoint, repo_id, rfilename)
+    } else {
+        format!("{}/{}/resolve/{}", endpoint, repo_id, rfilename)
+    };
+
+    let mut request = client.head(&url);
+    if let Some(token) = &auth.token {
+        request = request.header("Authorization", format!("Bearer {}", token));
+    }
+
+    let response = request.send()
+        .await
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to resolve file: {}", e)))?;
+
+    let size = response.headers()
+        .get("content-length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok());
+
+    Ok(FileInfo {
+        rfilename: rfilename.to_string(),
+        size,
+    })
 } 
