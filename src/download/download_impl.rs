@@ -334,4 +334,56 @@ impl ModelDownloader {
         
         Ok(())
     }
+
+    pub(crate) async fn download_file(&self, model_id: &str, file: &FileInfo, base_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+        let file_path = base_path.join(&file.rfilename);
+        
+        // 创建目录
+        if let Some(parent) = file_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        // 构建下载 URL
+        let file_url = self.get_file_url(model_id, &file.rfilename);
+        println!("Debug: Downloading from URL: {}", file_url);
+
+        // 创建请求
+        let mut request = self.client.get(&file_url);
+        if let Some(token) = &self.auth.token {
+            request = request.header("Authorization", format!("Bearer {}", token));
+        }
+
+        // 发送请求并获取响应
+        let response = request.send().await?;
+        
+        // 检查响应状态
+        if !response.status().is_success() {
+            return Err(format!("下载文件失败，HTTP状态码: {}", response.status()).into());
+        }
+
+        // 获取文件大小
+        let total_size = response.content_length().unwrap_or(0);
+        
+        // 创建文件
+        let mut file = fs::File::create(&file_path)?;
+        let mut downloaded: u64 = 0;
+        let mut stream = response.bytes_stream();
+
+        // 下载文件内容
+        while let Some(item) = stream.next().await {
+            let chunk = item?;
+            file.write_all(&chunk)?;
+            downloaded += chunk.len() as u64;
+            
+            // 打印下载进度
+            if total_size > 0 {
+                let percentage = (downloaded as f64 / total_size as f64 * 100.0) as u32;
+                print!("\r下载进度: {}% ({}/{} bytes)    ", percentage, downloaded, total_size);
+                std::io::stdout().flush()?;
+            }
+        }
+        
+        println!("\n文件下载完成: {}", file.rfilename);
+        Ok(())
+    }
 } 

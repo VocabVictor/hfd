@@ -81,4 +81,15 @@ impl ModelDownloader {
         self.running.store(true, Ordering::SeqCst);
         self.runtime.block_on(self.download_model(model_id))
     }
+
+    fn get_file_url(&self, model_id: &str, filename: &str) -> String {
+        match &self.repo_info.files {
+            RepoFiles::Model { .. } => {
+                format!("{}/{}/resolve/main/{}", self.config.endpoint, model_id, filename)
+            }
+            RepoFiles::Dataset { .. } => {
+                format!("{}/datasets/{}/resolve/main/{}", self.config.endpoint, model_id, filename)
+            }
+        }
+    }
 } 
