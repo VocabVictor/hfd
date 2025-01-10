@@ -10,6 +10,7 @@ use tokio::io::AsyncWriteExt;
 use futures::StreamExt;
 use std::pin::Pin;
 use std::future::Future;
+use std::time::Duration;
 
 #[derive(Debug)]
 pub enum DownloadTask {
@@ -128,7 +129,7 @@ impl DownloadTask {
             .unwrap()
             .progress_chars("#>-"));
         pb.set_message(format!("{}/{}", group, file.rfilename));
-        pb.enable_steady_tick(100);
+        pb.enable_steady_tick(Duration::from_millis(100));
 
         let response = request.send()
             .await
@@ -188,7 +189,7 @@ impl DownloadTask {
             .unwrap()
             .progress_chars("#>-"));
         pb.set_message(format!("{}/{}", group, file.rfilename));
-        pb.enable_steady_tick(100);
+        pb.enable_steady_tick(Duration::from_millis(100));
 
         let running = Arc::new(AtomicBool::new(true));
         
