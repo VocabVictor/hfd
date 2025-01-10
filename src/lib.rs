@@ -41,8 +41,20 @@ fn download_model(model_id: &str, local_dir: Option<String>, token: Option<Strin
         .block_on(downloader.download_model(model_id))
 }
 
+#[pyfunction]
+fn main() -> PyResult<()> {
+    if let Some(args) = cli::parse_args() {
+        match download_model(&args.model_id, args.local_dir, args.hf_token) {
+            Ok(result) => println!("Download completed: {}", result),
+            Err(e) => println!("Error during download: {:?}", e),
+        }
+    }
+    Ok(())
+}
+
 #[pymodule]
 fn hfd(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(download_model, m)?)?;
+    m.add_function(wrap_pyfunction!(main, m)?)?;
     Ok(())
 } 
