@@ -3,7 +3,7 @@ pub struct AuthInfo {
     pub token: Option<String>,
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, Clone)]
 #[serde(untagged)]
 pub enum RepoFiles {
     Model {
@@ -14,7 +14,7 @@ pub enum RepoFiles {
     },
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, Clone)]
 pub struct RepoInfo {
     #[serde(flatten)]
     pub files: RepoFiles,

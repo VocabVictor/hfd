@@ -25,7 +25,7 @@ impl ModelDownloader {
         println!("Debug: Total files count: {}", all_files.len());
 
         // 如果列表为空，可能需要从其他字段获取文件信息
-        let mut all_files = if all_files.is_empty() {
+        let all_files = if all_files.is_empty() {
             println!("Debug: No files found, checking tree");
             // 尝试从 extra 中查找可能的文件列表
             if let Some(Value::Array(files)) = repo_info.extra.get("tree") {

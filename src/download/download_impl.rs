@@ -14,7 +14,7 @@ use tokio::select;
 use serde_json::Value;
 
 impl ModelDownloader {
-    pub(crate) async fn download_model(&self, model_id: &str) -> PyResult<String> {
+    pub(crate) async fn download_model(&mut self, model_id: &str) -> PyResult<String> {
         let repo_info = self.get_repo_info(model_id).await?;
 
         let requires_auth = match &repo_info.gated {
