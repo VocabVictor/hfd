@@ -33,6 +33,12 @@ pub struct Config {
     pub model_dir: String,
     #[serde(default)]
     pub hf_token: Option<String>,
+    // 分块下载大小 (bytes)
+    #[serde(default = "default_chunk_size")]
+    pub chunk_size: usize,
+    // 最大重试次数
+    #[serde(default = "default_max_retries")]
+    pub max_retries: usize,
 }
 
 fn default_endpoint() -> String {
@@ -67,6 +73,14 @@ fn default_buffer_size() -> usize {
     1024 * 1024 // 1MB
 }
 
+fn default_chunk_size() -> usize {
+    16 * 1024 * 1024 // 16MB
+}
+
+fn default_max_retries() -> usize {
+    3
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -80,6 +94,8 @@ impl Default for Config {
             local_dir_base: "~/.code/models".to_string(),
             model_dir: "~/.cache/huggingface".to_string(),
             hf_token: None,
+            chunk_size: 16 * 1024 * 1024,  // 16MB
+            max_retries: 3,
         }
     }
 }

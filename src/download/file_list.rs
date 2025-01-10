@@ -116,7 +116,6 @@ impl ModelDownloader {
 
         // 按文件名排序，并确保没有重复
         files_to_download.sort_by(|a, b| a.rfilename.cmp(&b.rfilename));
-        files_to_download.dedup_by(|a, b| a.rfilename == b.rfilename);
         
         Ok((files_to_download, total_size))
     }
