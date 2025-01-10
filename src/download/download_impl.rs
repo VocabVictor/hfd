@@ -1,6 +1,4 @@
 use super::downloader::ModelDownloader;
-use crate::download::file_list;
-use crate::download::repo;
 use pyo3::prelude::*;
 use std::path::PathBuf;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -40,7 +38,7 @@ impl ModelDownloader {
         // 下载所有文件
         for file in files_to_download {
             if !self.running.load(Ordering::SeqCst) {
-                pb.finish_with_message("Download cancelled");
+                pb.finish_with_message("Download cancelled".to_string());
                 return Ok("Download cancelled".to_string());
             }
 
@@ -53,7 +51,7 @@ impl ModelDownloader {
                 if let Err(e) = Self::download_file_with_chunks(
                     &self.client,
                     file_url,
-                    file_path,
+                    file_path.clone(),
                     size,
                     self.config.chunk_size,
                     self.config.max_retries,
@@ -61,15 +59,14 @@ impl ModelDownloader {
                     pb.clone(),
                     self.running.clone(),
                 ).await {
-                    pb.finish_with_message(&format!("Failed to download {}: {}", file.rfilename, e));
-                    return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
-                        "Failed to download {}: {}", file.rfilename, e
-                    )));
+                    let error_msg = format!("Failed to download {}: {}", file.rfilename, e);
+                    pb.finish_with_message(error_msg.clone());
+                    return Err(pyo3::exceptions::PyRuntimeError::new_err(error_msg));
                 }
             }
         }
 
-        pb.finish_with_message("Download completed");
+        pb.finish_with_message("Download completed".to_string());
         Ok(format!("Downloaded model {} to {}", model_id, base_path.display()))
     }
 } 

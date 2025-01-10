@@ -77,7 +77,7 @@ impl ModelDownloader {
 
         println!("Debug: Total files count: {}", all_files.len());
 
-        let mut files_to_process: Vec<_> = all_files.into_iter()
+        let files_to_process: Vec<_> = all_files.into_iter()
             .filter(|file| self.should_download_file(&file.rfilename))
             .collect();
         

@@ -1,6 +1,5 @@
 use crate::types::{RepoInfo, AuthInfo};
 use crate::config::Config;
-use crate::download::repo;
 use pyo3::prelude::*;
 use reqwest::Client;
 use std::sync::atomic::{AtomicBool, Ordering};
