@@ -4,7 +4,7 @@ use pyo3::prelude::*;
 
 impl ModelDownloader {
     pub(crate) async fn get_repo_info(&self, model_id: &str) -> PyResult<RepoInfo> {
-        let url = format!("{}/api/models/{}", self.config.endpoint, model_id);
+        let url = self.config.get_api_endpoint(model_id);
         
         // 添加认证头
         let mut request = self.client.get(&url);

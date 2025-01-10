@@ -143,4 +143,20 @@ impl Config {
             format!("{}", shellexpand::tilde(&self.local_dir_base))
         }
     }
+
+    pub fn get_api_endpoint(&self, model_id: &str) -> String {
+        // 检查是否是数据集
+        let is_dataset = model_id.contains("/datasets/") || model_id.contains("datasets/");
+        let clean_id = if is_dataset {
+            model_id.replace("/datasets/", "/").replace("datasets/", "")
+        } else {
+            model_id.to_string()
+        };
+
+        if is_dataset {
+            format!("{}/api/datasets/{}", self.endpoint, clean_id)
+        } else {
+            format!("{}/api/models/{}", self.endpoint, clean_id)
+        }
+    }
 } 
