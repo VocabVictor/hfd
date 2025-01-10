@@ -108,25 +108,27 @@ impl DownloadTask {
         group: &str,
         is_dataset: bool,
     ) -> PyResult<()> {
-        // 根据类型构建正确的 URL
         let url = if is_dataset {
             format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
         } else {
             format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
         };
 
+        println!("Downloading {} from {}", file.rfilename, url);
+
         let mut request = client.get(&url);
         if let Some(ref token) = token {
             request = request.header("Authorization", format!("Bearer {}", token));
         }
 
-        // Create progress bar
+        // Create progress bar with better settings
         let pb = ProgressBar::new(file.size.unwrap_or(0));
         pb.set_style(ProgressStyle::default_bar()
             .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
             .unwrap()
             .progress_chars("#>-"));
         pb.set_message(format!("{}/{}", group, file.rfilename));
+        pb.enable_steady_tick(100);
 
         let response = request.send()
             .await
@@ -153,7 +155,7 @@ impl DownloadTask {
             pb.inc(chunk.len() as u64);
         }
 
-        pb.finish_with_message(format!("Downloaded {}/{}", group, file.rfilename));
+        pb.finish_with_message(format!("✓ Downloaded {}/{}", group, file.rfilename));
         Ok(())
     }
 
@@ -169,29 +171,31 @@ impl DownloadTask {
         group: &str,
         is_dataset: bool,
     ) -> PyResult<()> {
-        // 根据类型构建正确的 URL
         let url = if is_dataset {
             format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
         } else {
             format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
         };
 
+        println!("Downloading (chunked) {} from {}", file.rfilename, url);
+
         let total_size = file.size.unwrap_or(0);
 
-        // Create progress bar
+        // Create progress bar with better settings
         let pb = Arc::new(ProgressBar::new(total_size));
         pb.set_style(ProgressStyle::default_bar()
             .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
             .unwrap()
             .progress_chars("#>-"));
         pb.set_message(format!("{}/{}", group, file.rfilename));
+        pb.enable_steady_tick(100);
 
         let running = Arc::new(AtomicBool::new(true));
         
         // Use chunked download
         if let Err(e) = super::chunk::download_file_with_chunks(
             client,
-            url,
+            url.clone(),
             path.clone(),
             total_size,
             chunk_size,
@@ -200,10 +204,11 @@ impl DownloadTask {
             pb.clone(),
             running,
         ).await {
+            pb.finish_with_message(format!("✗ Failed to download {}/{}: {}", group, file.rfilename, e));
             return Err(pyo3::exceptions::PyRuntimeError::new_err(e));
         }
 
-        pb.finish_with_message(format!("Downloaded {}/{}", group, file.rfilename));
+        pb.finish_with_message(format!("✓ Downloaded {}/{} (chunked)", group, file.rfilename));
         Ok(())
     }
 

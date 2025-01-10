@@ -19,6 +19,9 @@ pub async fn download_file_with_chunks(
     progress_bar: Arc<ProgressBar>,
     running: Arc<AtomicBool>,
 ) -> Result<(), String> {
+    println!("Starting chunked download: {}", url);
+    println!("Total size: {} bytes, Chunk size: {} bytes", total_size, chunk_size);
+
     let mut file = File::create(&file_path)
         .await
         .map_err(|e| format!("Failed to create file: {}", e))?;
@@ -28,14 +31,17 @@ pub async fn download_file_with_chunks(
 
     while downloaded < total_size {
         if !running.load(Ordering::SeqCst) {
+            println!("Download cancelled");
             return Ok(());
         }
 
         let start = downloaded;
         let end = std::cmp::min(downloaded + chunk_size as u64, total_size);
+        println!("Downloading chunk: {} - {} bytes", start, end);
+
         let mut request = client.get(&url);
 
-        if let Some(token) = &token {
+        if let Some(ref token) = token {
             request = request.header("Authorization", format!("Bearer {}", token));
         }
 
@@ -46,6 +52,7 @@ pub async fn download_file_with_chunks(
             Err(e) => {
                 if current_retry < max_retries {
                     current_retry += 1;
+                    println!("Retry {} after error: {}", current_retry, e);
                     continue;
                 }
                 return Err(format!("Failed to download chunk: {}", e));
@@ -55,6 +62,7 @@ pub async fn download_file_with_chunks(
         if !response.status().is_success() {
             if current_retry < max_retries {
                 current_retry += 1;
+                println!("Retry {} after HTTP error: {}", current_retry, response.status());
                 continue;
             }
             return Err(format!("HTTP error: {}", response.status()));
@@ -63,6 +71,7 @@ pub async fn download_file_with_chunks(
         let mut stream = response.bytes_stream();
         while let Some(chunk) = stream.next().await {
             if !running.load(Ordering::SeqCst) {
+                println!("Download cancelled during chunk download");
                 return Ok(());
             }
 
@@ -82,5 +91,6 @@ pub async fn download_file_with_chunks(
         .await
         .map_err(|e| format!("Failed to flush file: {}", e))?;
 
+    println!("Chunked download completed: {}", url);
     Ok(())
 } 
