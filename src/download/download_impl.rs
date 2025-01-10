@@ -1,4 +1,4 @@
-use super::downloader::ModelDownloader;
+use super::ModelDownloader;
 use crate::download::repo;
 use crate::download::DownloadTask;
 use pyo3::prelude::*;
