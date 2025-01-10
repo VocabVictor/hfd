@@ -33,8 +33,8 @@ fn download_model(
     })
 }
 
-#[pyfunction]
-fn main() -> PyResult<()> {
+// 命令行入口
+pub fn main() {
     if let Some(args) = cli::parse_args() {
         match download_model(
             &args.model_id,
@@ -47,12 +47,11 @@ fn main() -> PyResult<()> {
             Err(e) => println!("Error: {}", e),
         }
     }
-    Ok(())
 }
 
+// Python 模块导出
 #[pymodule]
 fn hfd(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(download_model, m)?)?;
-    m.add_function(wrap_pyfunction!(main, m)?)?;
     Ok(())
 } 
