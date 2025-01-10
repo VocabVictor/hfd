@@ -1,5 +1,6 @@
 use crate::auth::Auth;
 use crate::config::Config;
+use crate::download::DownloadTask;
 use pyo3::prelude::*;
 use reqwest::Client;
 use serde_json::Value;
@@ -38,5 +39,15 @@ impl ModelDownloader {
             cache_dir,
             repo_info: None,
         })
+    }
+
+    pub(crate) fn download_file(&mut self, task: DownloadTask, model_id: &str) -> PyResult<()> {
+        // TODO: 实现文件下载
+        Ok(())
+    }
+
+    pub(crate) fn download_folder(&mut self, task: DownloadTask, model_id: &str) -> PyResult<()> {
+        // TODO: 实现文件夹下载
+        Ok(())
     }
 } 
