@@ -1,3 +1,5 @@
+use pyo3::prelude::*;
+
 mod auth;
 mod config;
 mod download;
@@ -14,7 +16,7 @@ pub fn download_model(
     include_patterns: Option<Vec<String>>,
     exclude_patterns: Option<Vec<String>>,
     token: Option<String>,
-) -> Result<String, Box<dyn std::error::Error>> {
+) -> PyResult<String> {
     let mut downloader = ModelDownloader::new(
         cache_dir,
         include_patterns,
@@ -23,13 +25,15 @@ pub fn download_model(
     )?;
     
     let model_id = model_id.to_string();
-    let rt = tokio::runtime::Runtime::new()?;
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
     rt.block_on(async move {
-        downloader.download_model(&model_id).await.map_err(|e| e.into())
+        downloader.download_model(&model_id).await
     })
 }
 
-pub fn main() {
+#[pyfunction]
+pub fn main() -> PyResult<()> {
     if let Some(args) = cli::parse_args() {
         match download_model(
             &args.model_id,
@@ -42,4 +46,11 @@ pub fn main() {
             Err(e) => println!("Error: {}", e),
         }
     }
+    Ok(())
+}
+
+#[pymodule]
+fn hfd(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(main, m)?)?;
+    Ok(())
 } 
