@@ -10,7 +10,7 @@ impl ModelDownloader {
         // 获取仓库信息
         let repo_info = repo::get_repo_info(
             &self.client,
-            &self.config.endpoint,
+            &self.config,
             model_id,
             &self.auth,
         ).await?;

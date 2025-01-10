@@ -48,7 +48,7 @@ impl Config {
         for path in config_paths {
             if let Ok(content) = fs::read_to_string(&path) {
                 println!("Loading config from {}", path);
-                if let Ok(config) = toml::from_str(&content) {
+                if let Ok(config) = toml::from_str::<Config>(&content) {
                     println!("Using endpoint: {}", config.endpoint);
                     return config;
                 }
