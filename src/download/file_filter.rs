@@ -1,4 +1,4 @@
-use super::downloader::ModelDownloader;
+use super::ModelDownloader;
 use crate::types::FileInfo;
 use glob::Pattern;
 
