@@ -2,7 +2,6 @@ use crate::types::{AuthInfo, RepoInfo, RepoFiles};
 use crate::config::Config;
 use pyo3::prelude::*;
 use reqwest::Client;
-use tokio::runtime::Runtime;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use ctrlc;
@@ -11,7 +10,6 @@ use ctrlc;
 pub struct ModelDownloader {
     pub(crate) cache_dir: String,
     pub(crate) client: Client,
-    pub(crate) runtime: Runtime,
     pub(crate) config: Config,
     pub(crate) include_patterns: Vec<String>,
     pub(crate) exclude_patterns: Vec<String>,
@@ -65,9 +63,6 @@ impl ModelDownloader {
                 config.get_model_dir("")
             },
             client,
-            runtime: Runtime::new().map_err(|e| {
-                pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create runtime: {}", e))
-            })?,
             config,
             include_patterns: include_patterns.unwrap_or_default(),
             exclude_patterns: exclude_patterns.unwrap_or_default(),
@@ -81,11 +76,10 @@ impl ModelDownloader {
 
     pub fn download(&mut self, model_id: &str) -> PyResult<String> {
         self.running.store(true, Ordering::SeqCst);
-        let model_id = model_id.to_string();
-        let future = async move {
-            self.download_model(&model_id).await
-        };
-        self.runtime.block_on(future)
+        let rt = tokio::runtime::Runtime::new().map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create runtime: {}", e))
+        })?;
+        rt.block_on(self.download_model(model_id))
     }
 
     pub(crate) fn get_file_url(&self, model_id: &str, filename: &str) -> PyResult<String> {
