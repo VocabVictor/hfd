@@ -79,6 +79,15 @@ impl ModelDownloader {
                 }
 
                 let file_path = base_path.join(&filename);
+                
+                // 如果文件路径包含目录，确保创建所有必要的父目录
+                if let Some(parent) = file_path.parent() {
+                    if !parent.exists() {
+                        if let Err(e) = fs::create_dir_all(parent) {
+                            return Err(format!("创建目录失败 {}: {}", parent.display(), e));
+                        }
+                    }
+                }
 
                 // 检查文件是否已下载
                 if let Ok(metadata) = fs::metadata(&file_path) {
