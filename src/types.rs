@@ -1,3 +1,12 @@
+use serde::Deserialize;
+use std::collections::HashMap;
+use serde_json::Value;
+
+#[derive(Debug, Clone)]
+pub struct AuthInfo {
+    pub token: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct RepoInfo {
     pub siblings: Vec<FileInfo>,
@@ -19,7 +28,7 @@ pub struct FileInfo {
 impl RepoInfo {
     pub fn is_dataset(&self) -> bool {
         // 检查 cardData 中的 task_categories 字段
-        if let Some(Value::Array(categories)) = self.cardData.get("task_categories") {
+        if let Some(Value::Array(_)) = self.cardData.get("task_categories") {
             return true;
         }
         // 检查是否有 pipeline_tag，如果有说明是模型

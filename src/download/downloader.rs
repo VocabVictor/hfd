@@ -1,5 +1,6 @@
-use crate::types::{AuthInfo, RepoInfo, RepoFiles};
+use crate::types::{RepoInfo, AuthInfo};
 use crate::config::Config;
+use crate::download::repo;
 use pyo3::prelude::*;
 use reqwest::Client;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -84,13 +85,10 @@ impl ModelDownloader {
 
     pub(crate) fn get_file_url(&self, model_id: &str, filename: &str) -> PyResult<String> {
         if let Some(repo_info) = &self.repo_info {
-            let url = match &repo_info.files {
-                RepoFiles::Model { .. } => {
-                    format!("{}/{}/resolve/main/{}", self.config.endpoint, model_id, filename)
-                }
-                RepoFiles::Dataset { .. } => {
-                    format!("{}/datasets/{}/resolve/main/{}", self.config.endpoint, model_id, filename)
-                }
+            let url = if repo_info.is_dataset() {
+                format!("{}/datasets/{}/resolve/main/{}", self.config.endpoint, model_id, filename)
+            } else {
+                format!("{}/{}/resolve/main/{}", self.config.endpoint, model_id, filename)
             };
             Ok(url)
         } else {

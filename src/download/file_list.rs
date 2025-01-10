@@ -1,9 +1,8 @@
 use super::downloader::ModelDownloader;
-use crate::types::{RepoInfo, FileInfo, RepoFiles};
+use crate::types::{RepoInfo, FileInfo};
 use pyo3::prelude::*;
 use std::path::PathBuf;
 use std::fs;
-use serde_json::Value;
 
 impl ModelDownloader {
     async fn get_file_size_from_resolve(&self, model_id: &str, filename: &str, repo_info: &RepoInfo) -> PyResult<Option<u64>> {
