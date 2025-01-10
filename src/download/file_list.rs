@@ -7,9 +7,30 @@ use std::fs;
 impl ModelDownloader {
     pub(crate) async fn prepare_download_list(&self, repo_info: &RepoInfo, model_id: &str, base_path: &PathBuf) 
         -> PyResult<(Vec<FileInfo>, u64)> {
-        let mut files_to_process: Vec<_> = repo_info.siblings.iter()
+        // 合并 siblings 和 files 字段
+        let mut all_files = repo_info.siblings.clone();
+        all_files.extend(repo_info.files.clone());
+
+        // 如果两个列表都为空，可能需要从其他字段获取文件信息
+        if all_files.is_empty() {
+            // 尝试从 extra 中查找可能的文件列表
+            if let Some(Value::Array(files)) = repo_info.extra.get("tree") {
+                for file in files {
+                    if let Some(path) = file.get("path").and_then(|v| v.as_str()) {
+                        let size = file.get("size")
+                            .and_then(|v| v.as_u64())
+                            .or_else(|| file.get("blob_size").and_then(|v| v.as_u64()));
+                        all_files.push(FileInfo {
+                            rfilename: path.to_string(),
+                            size,
+                        });
+                    }
+                }
+            }
+        }
+
+        let mut files_to_process: Vec<_> = all_files.into_iter()
             .filter(|file| self.should_download_file(&file.rfilename))
-            .cloned()
             .collect();
         
         // 并发获取文件大小
@@ -23,7 +44,7 @@ impl ModelDownloader {
                 let client = self.client.clone();
                 let token = self.auth.token.clone();
                 let filename = file.rfilename.clone();
-
+                
                 let task = tokio::spawn(async move {
                     let mut request = client.get(&file_url);
                     if let Some(token) = token {
@@ -31,17 +52,14 @@ impl ModelDownloader {
                     }
                     
                     match request.send().await {
-                        Ok(resp) => {
-                            if resp.status().is_success() {
-                                if let Some(size) = resp.content_length() {
-                                    return (filename, Some(size));
-                                }
-                            }
-                            (filename, None)
-                        },
-                        Err(_) => (filename, None)
+                        Ok(response) => {
+                            let size = response.content_length();
+                            Ok((filename, size))
+                        }
+                        Err(e) => Err(format!("获取文件大小失败: {}", e))
                     }
                 });
+                
                 size_fetch_tasks.push(task);
             }
         }
@@ -50,7 +68,7 @@ impl ModelDownloader {
         
         // 更新文件大小信息
         for result in size_results {
-            if let Ok((filename, size)) = result {
+            if let Ok(Ok((filename, size))) = result {
                 if let Some(size) = size {
                     if let Some(file) = files_to_process.iter_mut().find(|f| f.rfilename == filename) {
                         file.size = Some(size);
@@ -82,6 +100,7 @@ impl ModelDownloader {
 
         // 按文件名排序，并确保没有重复
         files_to_download.sort_by(|a, b| a.rfilename.cmp(&b.rfilename));
+        files_to_download.dedup_by(|a, b| a.rfilename == b.rfilename);
         
         Ok((files_to_download, total_size))
     }
