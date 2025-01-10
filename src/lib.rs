@@ -1,4 +1,5 @@
 use pyo3::prelude::*;
+use pyo3::wrap_pyfunction;
 
 mod auth;
 mod config;
@@ -11,9 +12,10 @@ pub use config::Config;
 pub use download::downloader::ModelDownloader;
 
 #[pyfunction]
+#[pyo3(signature = (model_id, cache_dir=None, include_patterns=None, exclude_patterns=None, token=None))]
 pub fn download_model(
-    cache_dir: Option<String>,
     model_id: String,
+    cache_dir: Option<String>,
     include_patterns: Option<Vec<String>>,
     exclude_patterns: Option<Vec<String>>,
     token: Option<String>,
@@ -34,9 +36,10 @@ pub fn download_model(
 }
 
 #[pyfunction]
+#[pyo3(signature = (model_id, cache_dir=None, include_patterns=None, exclude_patterns=None, token=None))]
 pub fn download_dataset(
-    cache_dir: Option<String>,
     model_id: String,
+    cache_dir: Option<String>,
     include_patterns: Option<Vec<String>>,
     exclude_patterns: Option<Vec<String>>,
     token: Option<String>,
@@ -60,8 +63,8 @@ pub fn download_dataset(
 pub fn main() -> PyResult<()> {
     if let Some(args) = cli::parse_args() {
         match download_model(
-            args.local_dir,
             args.model_id.to_string(),
+            args.local_dir,
             args.include_patterns,
             args.exclude_patterns,
             args.hf_token,
