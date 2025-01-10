@@ -243,11 +243,11 @@ impl ModelDownloader {
 
         request = request
             .header("Range", range)
-            .header("Accept-Encoding", "gzip, deflate, br")  // 启用压缩
+            .header("Accept-Encoding", "gzip, deflate, br")
             .header("Connection", "keep-alive")
             .header("Cache-Control", "no-cache")
             .header("Pragma", "no-cache")
-            .timeout(std::time::Duration::from_secs(300));  // 增加超时时间到5分钟
+            .timeout(std::time::Duration::from_secs(300));
 
         if !running.load(Ordering::SeqCst) {
             return Ok(());
@@ -263,7 +263,7 @@ impl ModelDownloader {
         let mut stream = response.bytes_stream();
         let mut buffer = Vec::with_capacity(8 * 1024 * 1024); // 8MB buffer
         let mut last_progress = std::time::Instant::now();
-        let mut _downloaded = 0u64;
+        let mut downloaded = 0u64;
 
         while let Some(chunk_result) = stream.next().await {
             if !running.load(Ordering::SeqCst) {
@@ -272,10 +272,10 @@ impl ModelDownloader {
 
             let chunk = chunk_result.map_err(|e| format!("读取响应失败: {}", e))?;
             buffer.extend_from_slice(&chunk);
-            _downloaded += chunk.len() as u64;
+            downloaded += chunk.len() as u64;
             
             let now = std::time::Instant::now();
-            if now.duration_since(last_progress).as_secs() > 60 {  // 增加超时时间到60秒
+            if now.duration_since(last_progress).as_secs() > 60 {
                 return Err("下载速度过慢，将重试".to_string());
             }
             
@@ -315,11 +315,11 @@ impl ModelDownloader {
         }
 
         request = request
-            .header("Accept-Encoding", "identity")  // 禁用压缩
+            .header("Accept-Encoding", "identity")
             .header("Connection", "keep-alive")
             .header("Cache-Control", "no-cache")
             .header("Pragma", "no-cache")
-            .timeout(std::time::Duration::from_secs(300));  // 增加超时时间
+            .timeout(std::time::Duration::from_secs(300));
 
         let response = request
             .send()
@@ -341,12 +341,12 @@ impl ModelDownloader {
         let mut stream = response.bytes_stream();
         let mut buffer = Vec::with_capacity(8 * 1024 * 1024); // 8MB buffer
         let mut last_progress = std::time::Instant::now();
-        let mut _downloaded = 0u64;
+        let mut downloaded = 0u64;
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| format!("读取响应失败: {}", e))?;
             buffer.extend_from_slice(&chunk);
-            _downloaded += chunk.len() as u64;
+            downloaded += chunk.len() as u64;
             
             let now = std::time::Instant::now();
             if now.duration_since(last_progress).as_secs() > 60 {
@@ -356,7 +356,7 @@ impl ModelDownloader {
             if buffer.len() >= 8 * 1024 * 1024 { // 8MB
                 file.write_all(&buffer)
                     .map_err(|e| format!("写入文件失败: {}", e))?;
-                pb.set_position(_downloaded);  // 使用 _downloaded 更新进度条
+                pb.set_position(downloaded);
                 buffer.clear();
                 last_progress = now;
             }
@@ -365,7 +365,7 @@ impl ModelDownloader {
         if !buffer.is_empty() {
             file.write_all(&buffer)
                 .map_err(|e| format!("写入文件失败: {}", e))?;
-            pb.set_position(_downloaded);  // 使用 _downloaded 更新最终进度
+            pb.set_position(downloaded);
         }
 
         file.sync_all()
@@ -444,7 +444,7 @@ impl ModelDownloader {
         pb.set_position(initial_size);
         
         // 创建信号量来限制并发数
-        let semaphore = Arc::new(Semaphore::new(32));  // 增加并发数到32
+        let semaphore = Arc::new(Semaphore::new(32));
 
         // 处理所有块
         let mut handles = chunks.iter()
@@ -493,7 +493,7 @@ impl ModelDownloader {
                                     return Err(format!("下载失败，已重试 {} 次: {}", max_retries, e));
                                 }
 
-                                let wait_time = Self::exponential_backoff(1000, retry_count, 30_000);  // 增加基础等待时间和最大等待时间
+                                let wait_time = Self::exponential_backoff(1000, retry_count, 30_000);
                                 tokio::time::sleep(tokio::time::Duration::from_millis(wait_time as u64)).await;
 
                                 retry_count += 1;
