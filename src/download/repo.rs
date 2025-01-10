@@ -15,6 +15,7 @@ pub async fn get_repo_info(
 ) -> PyResult<RepoInfo> {
     // 先尝试作为 model 获取
     let model_url = format!("{}/api/models/{}", endpoint, repo_id);
+    println!("Trying model URL: {}", model_url);
     let mut request = client.get(&model_url);
     if let Some(token) = &auth.token {
         request = request.header("Authorization", format!("Bearer {}", token));
@@ -39,6 +40,7 @@ pub async fn get_repo_info(
 
     // 如果不是 model，尝试作为 dataset 获取
     let dataset_url = format!("{}/api/datasets/{}", endpoint, repo_id);
+    println!("Trying dataset URL: {}", dataset_url);
     let mut request = client.get(&dataset_url);
     if let Some(token) = &auth.token {
         request = request.header("Authorization", format!("Bearer {}", token));
@@ -53,6 +55,7 @@ pub async fn get_repo_info(
             .await
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to parse repo info: {}", e)))?;
         
+        println!("Dataset API response: {}", json);
         let files = extract_files(client, endpoint, repo_id, auth, &json, true).await?;
         return Ok(RepoInfo {
             model_endpoint: None,
@@ -79,6 +82,8 @@ async fn extract_files(
     let siblings = json["siblings"].as_array()
         .ok_or_else(|| pyo3::exceptions::PyRuntimeError::new_err("No files found in repository"))?;
     
+    println!("Found {} files in repository", siblings.len());
+    
     // 使用信号量限制并发数
     let semaphore = Arc::new(Semaphore::new(10));
     let client = Arc::new(client.clone());
@@ -103,11 +108,19 @@ async fn extract_files(
 
     let results = join_all(tasks).await;
     let mut files = Vec::new();
+    let mut total_size = 0u64;
     for result in results {
         if let Ok(Ok(file_info)) = result {
+            if let Some(size) = file_info.size {
+                println!("File: {}, Size: {} bytes", file_info.rfilename, size);
+                total_size += size;
+            } else {
+                println!("File: {}, Size: unknown", file_info.rfilename);
+            }
             files.push(file_info);
         }
     }
+    println!("Total size of all files: {} bytes ({:.2} MB)", total_size, total_size as f64 / 1024.0 / 1024.0);
 
     Ok(files)
 }
@@ -126,6 +139,7 @@ async fn resolve_file_info(
         format!("{}/{}/resolve/{}", endpoint, repo_id, rfilename)
     };
 
+    println!("Resolving file: {}", url);
     let mut request = client.head(&url);
     if let Some(token) = &auth.token {
         request = request.header("Authorization", format!("Bearer {}", token));
@@ -135,10 +149,19 @@ async fn resolve_file_info(
         .await
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to resolve file: {}", e)))?;
 
+    println!("Response status: {}", response.status());
+    println!("Response headers: {:?}", response.headers());
+
     let size = response.headers()
         .get("content-length")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<u64>().ok());
+
+    if let Some(s) = size {
+        println!("Got size for {}: {} bytes", rfilename, s);
+    } else {
+        println!("Failed to get size for {}", rfilename);
+    }
 
     Ok(FileInfo {
         rfilename: rfilename.to_string(),
