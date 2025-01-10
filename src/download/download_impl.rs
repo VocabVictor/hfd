@@ -243,7 +243,7 @@ impl ModelDownloader {
 
         request = request
             .header("Range", range)
-            .header("Accept-Encoding", "gzip, deflate, br")
+            .header("Accept-Encoding", "identity")  // 禁用压缩以准确计算大小
             .header("Connection", "keep-alive")
             .header("Cache-Control", "no-cache")
             .header("Pragma", "no-cache")
@@ -263,7 +263,7 @@ impl ModelDownloader {
         let mut stream = response.bytes_stream();
         let mut buffer = Vec::with_capacity(8 * 1024 * 1024); // 8MB buffer
         let mut last_progress = std::time::Instant::now();
-        let mut downloaded = 0u64;
+        let mut chunk_downloaded = 0u64;
 
         while let Some(chunk_result) = stream.next().await {
             if !running.load(Ordering::SeqCst) {
@@ -272,17 +272,19 @@ impl ModelDownloader {
 
             let chunk = chunk_result.map_err(|e| format!("读取响应失败: {}", e))?;
             buffer.extend_from_slice(&chunk);
-            downloaded += chunk.len() as u64;
+            chunk_downloaded += chunk.len() as u64;
             
             let now = std::time::Instant::now();
             if now.duration_since(last_progress).as_secs() > 60 {
                 return Err("下载速度过慢，将重试".to_string());
             }
             
+            // 实时更新进度条，不等缓冲区满
+            pb.inc(chunk.len() as u64);
+            
             if buffer.len() >= 8 * 1024 * 1024 { // 8MB
                 file.write_all(&buffer)
                     .map_err(|e| format!("写入文件失败: {}", e))?;
-                pb.inc(buffer.len() as u64);
                 buffer.clear();
                 last_progress = now;
             }
@@ -291,7 +293,6 @@ impl ModelDownloader {
         if !buffer.is_empty() && running.load(Ordering::SeqCst) {
             file.write_all(&buffer)
                 .map_err(|e| format!("写入文件失败: {}", e))?;
-            pb.inc(buffer.len() as u64);
         }
 
         if running.load(Ordering::SeqCst) {
