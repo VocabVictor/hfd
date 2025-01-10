@@ -233,11 +233,12 @@ impl DownloadTask {
         for file in files {
             let file_path = folder_path.join(file.rfilename.split('/').last().unwrap_or(&file.rfilename));
             if let Some(size) = file.size {
-                let task = if size > 50 * 1024 * 1024 { // 50MB
+                // 只有超过1GB的文件才使用分块下载
+                let task = if size > 100 * 1024 * 1024 { // 1GB
                     DownloadTask::ChunkedFile {
                         file: file.clone(),
                         path: file_path,
-                        chunk_size: 16 * 1024 * 1024, // 16MB
+                        chunk_size: 16 * 1024 * 1024, // 16MB chunks
                         max_retries: 3,
                         group: name.to_string(),
                         is_dataset,
