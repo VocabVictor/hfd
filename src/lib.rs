@@ -41,27 +41,8 @@ fn download_model(model_id: &str, local_dir: Option<String>, token: Option<Strin
         .block_on(downloader.download_model(model_id))
 }
 
-#[pyfunction]
-fn main(args: Option<Vec<String>>) -> PyResult<()> {
-    let args = args.unwrap_or_else(|| vec![]);
-    
-    if args.is_empty() || args.contains(&"-h".to_string()) || args.contains(&"--help".to_string()) {
-        cli::print_help();
-        return Ok(());
-    }
-
-    let model_id = &args[0];
-    println!("Processing model ID: {}", model_id);
-    match download_model(model_id, None, None) {
-        Ok(result) => println!("Download completed: {}", result),
-        Err(e) => println!("Error during download: {:?}", e),
-    }
-    Ok(())
-}
-
 #[pymodule]
 fn hfd(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(download_model, m)?)?;
-    m.add_function(wrap_pyfunction!(main, m)?)?;
     Ok(())
 } 
