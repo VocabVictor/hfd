@@ -1,5 +1,5 @@
 use super::downloader::ModelDownloader;
-use crate::types::{RepoInfo, FileInfo};
+use crate::types::{RepoInfo, FileInfo, RepoFiles};
 use pyo3::prelude::*;
 use std::path::PathBuf;
 use std::fs;
@@ -9,38 +9,49 @@ impl ModelDownloader {
     pub(crate) async fn prepare_download_list(&self, repo_info: &RepoInfo, model_id: &str, base_path: &PathBuf) 
         -> PyResult<(Vec<FileInfo>, u64)> {
         println!("Debug: Starting prepare_download_list");
-        println!("Debug: Initial siblings count: {}", repo_info.siblings.len());
-        println!("Debug: Initial files count: {}", repo_info.files.len());
         
-        // 合并 siblings 和 files 字段
-        let mut all_files = repo_info.siblings.clone();
-        all_files.extend(repo_info.files.clone());
+        // 获取文件列表
+        let all_files = match &repo_info.files {
+            RepoFiles::Model { files } => {
+                println!("Debug: Found model repository with {} files", files.len());
+                files.clone()
+            }
+            RepoFiles::Dataset { siblings } => {
+                println!("Debug: Found dataset repository with {} files", siblings.len());
+                siblings.clone()
+            }
+        };
 
-        println!("Debug: Combined files count: {}", all_files.len());
+        println!("Debug: Total files count: {}", all_files.len());
 
-        // 如果两个列表都为空，可能需要从其他字段获取文件信息
-        if all_files.is_empty() {
-            println!("Debug: No files found in siblings or files, checking tree");
+        // 如果列表为空，可能需要从其他字段获取文件信息
+        let mut all_files = if all_files.is_empty() {
+            println!("Debug: No files found, checking tree");
             // 尝试从 extra 中查找可能的文件列表
             if let Some(Value::Array(files)) = repo_info.extra.get("tree") {
                 println!("Debug: Found tree with {} entries", files.len());
+                let mut tree_files = Vec::new();
                 for file in files {
                     if let Some(path) = file.get("path").and_then(|v| v.as_str()) {
                         let size = file.get("size")
                             .and_then(|v| v.as_u64())
                             .or_else(|| file.get("blob_size").and_then(|v| v.as_u64()));
-                        all_files.push(FileInfo {
+                        tree_files.push(FileInfo {
                             rfilename: path.to_string(),
                             size,
                         });
                     }
                 }
-                println!("Debug: Added {} files from tree", all_files.len());
+                println!("Debug: Added {} files from tree", tree_files.len());
+                tree_files
             } else {
                 println!("Debug: No tree found in extra");
                 println!("Debug: Extra content: {:?}", repo_info.extra);
+                Vec::new()
             }
-        }
+        } else {
+            all_files
+        };
 
         let mut files_to_process: Vec<_> = all_files.into_iter()
             .filter(|file| self.should_download_file(&file.rfilename))

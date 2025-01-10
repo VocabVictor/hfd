@@ -7,9 +7,20 @@ pub struct AuthInfo {
 }
 
 #[derive(Debug, serde::Deserialize)]
+#[serde(untagged)]
+pub enum RepoFiles {
+    Model {
+        files: Vec<FileInfo>,
+    },
+    Dataset {
+        siblings: Vec<FileInfo>,
+    },
+}
+
+#[derive(Debug, serde::Deserialize)]
 pub struct RepoInfo {
-    pub siblings: Vec<FileInfo>,
-    pub files: Vec<FileInfo>,
+    #[serde(flatten)]
+    pub files: RepoFiles,
     pub gated: serde_json::Value,
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
