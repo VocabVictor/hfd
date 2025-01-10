@@ -15,6 +15,9 @@ impl ModelDownloader {
             &self.auth,
         ).await?;
 
+        // 检查是否为数据集
+        let is_dataset = repo_info.is_dataset();
+
         // 准备下载目录
         let base_path = PathBuf::from(&self.cache_dir).join(model_id.split('/').last().unwrap_or(model_id));
         std::fs::create_dir_all(&base_path)?;
@@ -62,12 +65,14 @@ impl ModelDownloader {
                         self.config.chunk_size,
                         self.config.max_retries,
                         "root",
+                        is_dataset,
                     )
                 } else {
                     DownloadTask::new_small_file(
                         file.clone(),
                         file_path,
                         "root",
+                        is_dataset,
                     )
                 }
             } else {
@@ -75,6 +80,7 @@ impl ModelDownloader {
                     file,
                     file_path,
                     "root",
+                    is_dataset,
                 )
             };
 
@@ -87,7 +93,7 @@ impl ModelDownloader {
         // 下载子目录文件
         for (folder, files) in folder_groups {
             // 创建文件夹下载任务
-            let task = DownloadTask::new_folder(folder.clone(), files, base_path.clone());
+            let task = DownloadTask::new_folder(folder.clone(), files, base_path.clone(), is_dataset);
 
             // 执行下载任务
             if let Err(e) = self.download_folder(task, model_id).await {

@@ -18,6 +18,7 @@ pub enum DownloadTask {
         file: FileInfo,
         path: PathBuf,
         group: String,
+        is_dataset: bool,
     },
     #[allow(dead_code)]
     ChunkedFile {
@@ -26,22 +27,25 @@ pub enum DownloadTask {
         chunk_size: usize,
         max_retries: usize,
         group: String,
+        is_dataset: bool,
     },
     #[allow(dead_code)]
     Folder {
         name: String,
         files: Vec<FileInfo>,
         base_path: PathBuf,
+        is_dataset: bool,
     },
 }
 
 #[allow(dead_code)]
 impl DownloadTask {
-    pub fn new_small_file(file: FileInfo, path: PathBuf, group: &str) -> Self {
+    pub fn new_small_file(file: FileInfo, path: PathBuf, group: &str, is_dataset: bool) -> Self {
         Self::SmallFile {
             file,
             path,
             group: group.to_string(),
+            is_dataset,
         }
     }
 
@@ -51,6 +55,7 @@ impl DownloadTask {
         chunk_size: usize,
         max_retries: usize,
         group: &str,
+        is_dataset: bool,
     ) -> Self {
         Self::ChunkedFile {
             file,
@@ -58,14 +63,16 @@ impl DownloadTask {
             chunk_size,
             max_retries,
             group: group.to_string(),
+            is_dataset,
         }
     }
 
-    pub fn new_folder(name: String, files: Vec<FileInfo>, base_path: PathBuf) -> Self {
+    pub fn new_folder(name: String, files: Vec<FileInfo>, base_path: PathBuf, is_dataset: bool) -> Self {
         Self::Folder {
             name,
             files,
             base_path,
+            is_dataset,
         }
     }
 
@@ -78,14 +85,14 @@ impl DownloadTask {
     ) -> Pin<Box<dyn Future<Output = PyResult<()>> + 'a>> {
         Box::pin(async move {
             match self {
-                Self::SmallFile { file, path, group } => {
-                    Self::download_small_file(client, &file, &path, token, endpoint, model_id, &group).await
+                Self::SmallFile { file, path, group, is_dataset } => {
+                    Self::download_small_file(client, &file, &path, token, endpoint, model_id, &group, is_dataset).await
                 }
-                Self::ChunkedFile { file, path, chunk_size, max_retries, group } => {
-                    Self::download_chunked_file(client, &file, &path, chunk_size, max_retries, token, endpoint, model_id, &group).await
+                Self::ChunkedFile { file, path, chunk_size, max_retries, group, is_dataset } => {
+                    Self::download_chunked_file(client, &file, &path, chunk_size, max_retries, token, endpoint, model_id, &group, is_dataset).await
                 }
-                Self::Folder { name, files, base_path } => {
-                    Self::download_folder(client, &name, &files, &base_path, token, endpoint, model_id).await
+                Self::Folder { name, files, base_path, is_dataset } => {
+                    Self::download_folder(client, &name, &files, &base_path, token, endpoint, model_id, is_dataset).await
                 }
             }
         })
@@ -99,26 +106,18 @@ impl DownloadTask {
         endpoint: &str,
         model_id: &str,
         group: &str,
+        is_dataset: bool,
     ) -> PyResult<()> {
-        let url = format!("{}/api/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename);
+        // 根据类型构建正确的 URL
+        let url = if is_dataset {
+            format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+        } else {
+            format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+        };
+
         let mut request = client.get(&url);
         if let Some(ref token) = token {
             request = request.header("Authorization", format!("Bearer {}", token));
-        }
-
-        // Try dataset URL first
-        let mut response = request.send().await;
-        let mut final_url = url;
-        
-        // If dataset URL fails, try model URL
-        if response.is_err() || !response.as_ref().unwrap().status().is_success() {
-            let model_url = format!("{}/api/models/{}/resolve/main/{}", endpoint, model_id, file.rfilename);
-            let mut model_request = client.get(&model_url);
-            if let Some(ref token) = token {
-                model_request = model_request.header("Authorization", format!("Bearer {}", token));
-            }
-            response = model_request.send().await;
-            final_url = model_url;
         }
 
         // Create progress bar
@@ -129,16 +128,15 @@ impl DownloadTask {
             .progress_chars("#>-"));
         pb.set_message(format!("{}/{}", group, file.rfilename));
 
-        let response = match response {
-            Ok(resp) => resp,
-            Err(e) => return Err(pyo3::exceptions::PyRuntimeError::new_err(
-                format!("Failed to download from {}: {}", final_url, e)
-            )),
-        };
+        let response = request.send()
+            .await
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
+                format!("Failed to download from {}: {}", url, e)
+            ))?;
 
         if !response.status().is_success() {
             return Err(pyo3::exceptions::PyRuntimeError::new_err(
-                format!("HTTP error from {}: {}", final_url, response.status())
+                format!("HTTP error from {}: {}", url, response.status())
             ));
         }
 
@@ -169,20 +167,14 @@ impl DownloadTask {
         endpoint: &str,
         model_id: &str,
         group: &str,
+        is_dataset: bool,
     ) -> PyResult<()> {
-        // Try dataset URL first
-        let mut url = format!("{}/api/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename);
-        let mut request = client.get(&url);
-        if let Some(token) = &token {
-            request = request.header("Authorization", format!("Bearer {}", token));
-        }
-
-        let response = request.send().await;
-        
-        // If dataset URL fails, try model URL
-        if response.is_err() || !response.as_ref().unwrap().status().is_success() {
-            url = format!("{}/api/models/{}/resolve/main/{}", endpoint, model_id, file.rfilename);
-        }
+        // 根据类型构建正确的 URL
+        let url = if is_dataset {
+            format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+        } else {
+            format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+        };
 
         let total_size = file.size.unwrap_or(0);
 
@@ -223,6 +215,7 @@ impl DownloadTask {
         token: Option<String>,
         endpoint: &str,
         model_id: &str,
+        is_dataset: bool,
     ) -> PyResult<()> {
         // 创建文件夹
         let folder_path = base_path.join(name);
@@ -241,12 +234,14 @@ impl DownloadTask {
                         chunk_size: 16 * 1024 * 1024, // 16MB
                         max_retries: 3,
                         group: name.to_string(),
+                        is_dataset,
                     }
                 } else {
                     DownloadTask::SmallFile {
                         file: file.clone(),
                         path: file_path,
                         group: name.to_string(),
+                        is_dataset,
                     }
                 };
                 task.execute(client, token.clone(), endpoint, model_id).await?;
