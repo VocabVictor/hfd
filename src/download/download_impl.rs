@@ -1,4 +1,5 @@
 use super::downloader::ModelDownloader;
+use crate::download::repo;
 use pyo3::prelude::*;
 use std::path::PathBuf;
 use indicatif::{ProgressBar, ProgressStyle};
