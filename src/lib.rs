@@ -1,5 +1,3 @@
-use pyo3::prelude::*;
-
 mod auth;
 mod config;
 mod download;
@@ -10,14 +8,13 @@ pub use auth::Auth;
 pub use config::Config;
 pub use download::ModelDownloader;
 
-#[pyfunction]
-fn download_model(
+pub fn download_model(
     model_id: &str,
     cache_dir: Option<String>,
     include_patterns: Option<Vec<String>>,
     exclude_patterns: Option<Vec<String>>,
     token: Option<String>,
-) -> PyResult<String> {
+) -> Result<String, Box<dyn std::error::Error>> {
     let mut downloader = ModelDownloader::new(
         cache_dir,
         include_patterns,
@@ -26,14 +23,12 @@ fn download_model(
     )?;
     
     let model_id = model_id.to_string();
-    Python::with_gil(|py| {
-        pyo3_asyncio::tokio::run(py, async move {
-            downloader.download_model(&model_id).await
-        })
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async move {
+        downloader.download_model(&model_id).await.map_err(|e| e.into())
     })
 }
 
-// 命令行入口
 pub fn main() {
     if let Some(args) = cli::parse_args() {
         match download_model(
@@ -47,11 +42,4 @@ pub fn main() {
             Err(e) => println!("Error: {}", e),
         }
     }
-}
-
-// Python 模块导出
-#[pymodule]
-fn hfd(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(download_model, m)?)?;
-    Ok(())
 } 
