@@ -104,6 +104,7 @@ Options:
     --hf_token      (Optional) Hugging Face token for authentication
                     Can also be configured in config file
     --proxy-on      (Optional) Enable proxy for downloading
+                    Uses http_proxy/HTTP_PROXY or https_proxy/HTTPS_PROXY environment variables
 
 Example:
     hfd gpt2
