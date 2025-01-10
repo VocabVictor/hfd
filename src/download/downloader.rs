@@ -19,8 +19,15 @@ impl ModelDownloader {
         exclude_patterns: Option<Vec<String>>,
         token: Option<String>,
     ) -> PyResult<Self> {
-        let config = Config::new(include_patterns, exclude_patterns)?;
-        let auth = Auth::new(token)?;
+        let mut config = Config::load();
+        if let Some(include_patterns) = include_patterns {
+            config.include_patterns = include_patterns;
+        }
+        if let Some(exclude_patterns) = exclude_patterns {
+            config.exclude_patterns = exclude_patterns;
+        }
+        
+        let auth = Auth { token };
         let cache_dir = cache_dir.unwrap_or_else(|| "./.cache".to_string());
         let client = Client::new();
 

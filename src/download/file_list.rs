@@ -1,4 +1,4 @@
-use super::ModelDownloader;
+use super::downloader::ModelDownloader;
 use crate::types::{FileInfo, RepoInfo};
 use pyo3::prelude::*;
 use std::path::PathBuf;
