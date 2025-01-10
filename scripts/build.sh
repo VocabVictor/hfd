@@ -10,13 +10,9 @@ command -v twine >/dev/null 2>&1 || { echo "需要安装 twine，请运行: pip 
 # 获取当前版本号
 CURRENT_VERSION=$(cat Cargo.toml | grep '^version =' | sed 's/version = "\(.*\)"/\1/')
 
-# 确保 Python 包结构正确
-mkdir -p python/hfd
-cat > python/hfd/__init__.py << 'EOF'
-from .hfd import main
-
-__all__ = ["main"]
-EOF
+# git 提交
+git add .
+git commit -m "update"
 
 # 构建当前平台的 wheel
 echo "构建 wheel..."
