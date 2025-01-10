@@ -17,6 +17,7 @@ fn download_model(
     include_patterns: Option<Vec<String>>,
     exclude_patterns: Option<Vec<String>>,
     token: Option<String>,
+    proxy_on: Option<bool>,
 ) -> PyResult<String> {
     let mut downloader = ModelDownloader::new(
         cache_dir,
@@ -24,6 +25,10 @@ fn download_model(
         exclude_patterns,
         token,
     )?;
+    
+    if proxy_on.unwrap_or(false) {
+        downloader.enable_proxy();
+    }
     
     let model_id = model_id.to_string();
     Python::with_gil(|py| {
@@ -42,6 +47,7 @@ fn main() -> PyResult<()> {
             args.include_patterns,
             args.exclude_patterns,
             args.hf_token,
+            Some(args.proxy_on),
         ) {
             Ok(result) => println!("{}", result),
             Err(e) => println!("Error: {}", e),

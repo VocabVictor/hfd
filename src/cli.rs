@@ -7,6 +7,7 @@ pub struct CliArgs {
     pub exclude_patterns: Option<Vec<String>>,
     pub local_dir: Option<String>,
     pub hf_token: Option<String>,
+    pub proxy_on: bool,
 }
 
 pub fn parse_args() -> Option<CliArgs> {
@@ -24,6 +25,7 @@ pub fn parse_args() -> Option<CliArgs> {
         exclude_patterns: None,
         local_dir: None,
         hf_token: None,
+        proxy_on: false,
     };
 
     let mut i = 1;
@@ -71,6 +73,9 @@ pub fn parse_args() -> Option<CliArgs> {
                     i += 1;
                 }
             }
+            "--proxy-on" => {
+                cli_args.proxy_on = true;
+            }
             _ => {}
         }
         i += 1;
@@ -81,7 +86,7 @@ pub fn parse_args() -> Option<CliArgs> {
 
 pub fn print_help() {
     println!(r#"Usage:
-    hfd <REPO_ID> [--config path] [--include pattern1 pattern2 ...] [--exclude pattern1 pattern2 ...] [--local-dir path] [--hf_token token]
+    hfd <REPO_ID> [--config path] [--include pattern1 pattern2 ...] [--exclude pattern1 pattern2 ...] [--local-dir path] [--hf_token token] [--proxy-on]
 
 Description:
     Downloads a model from Hugging Face using the provided repo ID.
@@ -98,10 +103,12 @@ Options:
     --local-dir     (Optional) Directory path to store the downloaded data
     --hf_token      (Optional) Hugging Face token for authentication
                     Can also be configured in config file
+    --proxy-on      (Optional) Enable proxy for downloading
 
 Example:
     hfd gpt2
     hfd bigscience/bloom-560m --exclude *.safetensors
     hfd meta-llama/Llama-2-7b --config /path/to/config.toml
-    hfd meta-llama/Llama-2-7b --hf_username myuser --hf_token mytoken"#);
+    hfd meta-llama/Llama-2-7b --hf_username myuser --hf_token mytoken
+    hfd gpt2 --proxy-on"#);
 } 
