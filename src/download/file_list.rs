@@ -4,7 +4,6 @@ use futures::future::join_all;
 use std::collections::HashMap;
 use walkdir::WalkDir;
 use tokio;
-use std::path::Path;
 
 pub async fn get_file_list(client: &Client, endpoint: &str, _model_id: &str, token: Option<String>, is_dataset: bool) -> Result<Vec<FileInfo>, String> {
     let mut files = Vec::new();
