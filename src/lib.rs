@@ -10,7 +10,7 @@ use crate::config::Config;
 use crate::download::ModelDownloader;
 
 #[pyfunction]
-fn download(model_id: &str, local_dir: Option<String>, token: Option<String>) -> PyResult<String> {
+fn download_model(model_id: &str, local_dir: Option<String>, token: Option<String>) -> PyResult<String> {
     // 创建配置
     let mut config = Config::default();
     if let Some(dir) = local_dir {
@@ -24,7 +24,12 @@ fn download(model_id: &str, local_dir: Option<String>, token: Option<String>) ->
     };
 
     // 创建下载器
-    let downloader = ModelDownloader::new(config, auth)?;
+    let downloader = ModelDownloader::new(
+        Some(config.get_model_dir(model_id)),
+        None,  // include_patterns
+        None,  // exclude_patterns
+        auth.token,
+    )?;
 
     // 运行下载
     tokio::runtime::Builder::new_multi_thread()
@@ -36,6 +41,6 @@ fn download(model_id: &str, local_dir: Option<String>, token: Option<String>) ->
 
 #[pymodule]
 fn hfd(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(download, m)?)?;
+    m.add_function(wrap_pyfunction!(download_model, m)?)?;
     Ok(())
 } 
