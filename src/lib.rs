@@ -27,7 +27,8 @@ fn download_model(
     )?;
     
     if proxy_on.unwrap_or(false) {
-        downloader.enable_proxy();
+        downloader.enable_proxy()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to enable proxy: {}", e)))?;
     }
     
     let model_id = model_id.to_string();
