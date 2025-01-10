@@ -12,7 +12,7 @@ pub struct CliArgs {
 pub fn parse_args() -> Option<CliArgs> {
     let args: Vec<String> = env::args().skip(1).collect();
     
-    if args.is_empty() || args[0] == "-h" || args[0] == "--help" {
+    if args.is_empty() || args.iter().any(|arg| arg == "-h" || arg == "--help") {
         print_help();
         return None;
     }
