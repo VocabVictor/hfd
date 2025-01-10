@@ -2,6 +2,7 @@
 target/
 Cargo.lock
 main.py
+hfd.log
 
 # Python
 __pycache__/
