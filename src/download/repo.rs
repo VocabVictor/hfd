@@ -33,7 +33,7 @@ pub async fn get_repo_info(
         
         let files = extract_files(client, &config.endpoint, repo_id, auth, &json, false).await?;
         return Ok(RepoInfo {
-            model_endpoint: Some(format!("{}/{}", config.endpoint, repo_id)),
+            model_endpoint: Some(format!("{}/models/{}", config.endpoint, repo_id)),
             dataset_endpoint: None,
             files,
         });
@@ -135,9 +135,9 @@ async fn resolve_file_info(
     is_dataset: bool,
 ) -> PyResult<FileInfo> {
     let url = if is_dataset {
-        format!("{}/datasets/{}/resolve/{}", endpoint, repo_id, rfilename)
+        format!("{}/datasets/{}/resolve/main/{}", endpoint, repo_id, rfilename)
     } else {
-        format!("{}/{}/resolve/{}", endpoint, repo_id, rfilename)
+        format!("{}/models/{}/resolve/main/{}", endpoint, repo_id, rfilename)
     };
 
     println!("Resolving file: {}", url);
