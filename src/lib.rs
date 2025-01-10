@@ -39,8 +39,22 @@ fn download_model(model_id: &str, local_dir: Option<String>, token: Option<Strin
         .block_on(downloader.download_model(model_id))
 }
 
+#[pyfunction]
+fn main() -> PyResult<()> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() < 2 {
+        cli::print_help();
+        return Ok(());
+    }
+
+    let model_id = &args[1];
+    download_model(model_id, None, None)?;
+    Ok(())
+}
+
 #[pymodule]
 fn hfd(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(download_model, m)?)?;
+    m.add_function(wrap_pyfunction!(main, m)?)?;
     Ok(())
 } 
