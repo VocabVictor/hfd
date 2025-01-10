@@ -1,31 +1,32 @@
-#[derive(Debug, Clone)]
-pub struct AuthInfo {
-    pub token: Option<String>,
-}
-
-#[derive(Debug, serde::Deserialize, Clone)]
-#[serde(untagged)]
-pub enum RepoFiles {
-    Model {
-        files: Vec<FileInfo>,
-    },
-    Dataset {
-        siblings: Vec<FileInfo>,
-    },
-}
-
-#[derive(Debug, serde::Deserialize, Clone)]
+#[derive(Debug, Deserialize)]
 pub struct RepoInfo {
-    #[serde(flatten)]
-    pub files: RepoFiles,
+    pub siblings: Vec<FileInfo>,
     #[serde(default)]
-    pub gated: serde_json::Value,
+    pub extra: HashMap<String, Value>,
     #[serde(default)]
-    pub extra: serde_json::Map<String, serde_json::Value>,
+    pub cardData: HashMap<String, Value>,
+    #[serde(default)]
+    pub pipeline_tag: Option<String>,
 }
 
-#[derive(Debug, serde::Deserialize, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct FileInfo {
     pub rfilename: String,
+    #[serde(skip)]
     pub size: Option<u64>,
+}
+
+impl RepoInfo {
+    pub fn is_dataset(&self) -> bool {
+        // 检查 cardData 中的 task_categories 字段
+        if let Some(Value::Array(categories)) = self.cardData.get("task_categories") {
+            return true;
+        }
+        // 检查是否有 pipeline_tag，如果有说明是模型
+        if self.pipeline_tag.is_some() {
+            return false;
+        }
+        // 检查文件列表中是否包含典型的数据集文件
+        self.siblings.iter().any(|f| f.rfilename.starts_with("data/") || f.rfilename.contains("dataset"))
+    }
 } 
