@@ -11,9 +11,13 @@ command -v twine >/dev/null 2>&1 || { echo "需要安装 twine，请运行: pip 
 CURRENT_VERSION=$(cat Cargo.toml | grep '^version =' | sed 's/version = "\(.*\)"/\1/')
 
 # git 提交
-git add .
-git commit -m "update something [skip actions]"
-git push
+if [[ -n $(git status -s) ]]; then
+    git add .
+    git commit -m "update something [skip actions]"
+    git push
+else
+    echo "没有需要提交的更改"
+fi
 
 # 构建当前平台的 wheel
 echo "构建 wheel..."
