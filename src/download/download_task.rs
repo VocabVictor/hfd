@@ -107,19 +107,19 @@ impl DownloadTask {
         }
 
         // Try dataset URL first
-        let response = request.send().await;
+        let mut response = request.send().await;
+        let mut final_url = url;
         
         // If dataset URL fails, try model URL
-        let (response, final_url) = if response.is_err() || !response.unwrap().status().is_success() {
+        if response.is_err() || !response.as_ref().unwrap().status().is_success() {
             let model_url = format!("{}/api/models/{}/resolve/main/{}", endpoint, model_id, file.rfilename);
             let mut model_request = client.get(&model_url);
             if let Some(token) = &token {
                 model_request = model_request.header("Authorization", format!("Bearer {}", token));
             }
-            (model_request.send().await, model_url)
-        } else {
-            (response.unwrap(), url)
-        };
+            response = model_request.send().await;
+            final_url = model_url;
+        }
 
         // Create progress bar
         let pb = ProgressBar::new(file.size.unwrap_or(0));
@@ -171,8 +171,8 @@ impl DownloadTask {
         group: &str,
     ) -> PyResult<()> {
         // Try dataset URL first
-        let dataset_url = format!("{}/api/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename);
-        let mut request = client.get(&dataset_url);
+        let mut url = format!("{}/api/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename);
+        let mut request = client.get(&url);
         if let Some(token) = &token {
             request = request.header("Authorization", format!("Bearer {}", token));
         }
@@ -180,11 +180,9 @@ impl DownloadTask {
         let response = request.send().await;
         
         // If dataset URL fails, try model URL
-        let url = if response.is_err() || !response.unwrap().status().is_success() {
-            format!("{}/api/models/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
-        } else {
-            dataset_url
-        };
+        if response.is_err() || !response.as_ref().unwrap().status().is_success() {
+            url = format!("{}/api/models/{}/resolve/main/{}", endpoint, model_id, file.rfilename);
+        }
 
         let total_size = file.size.unwrap_or(0);
 

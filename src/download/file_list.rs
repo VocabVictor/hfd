@@ -7,7 +7,7 @@ impl ModelDownloader {
     pub(crate) async fn prepare_download_list(
         &self,
         repo_info: &RepoInfo,
-        model_id: &str,
+        _model_id: &str,
         base_path: &PathBuf,
     ) -> PyResult<(Vec<FileInfo>, u64)> {
         // 创建基础目录
