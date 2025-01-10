@@ -8,7 +8,7 @@ mod cli;
 
 pub use auth::Auth;
 pub use config::Config;
-pub use download::ModelDownloader;
+pub use download::downloader::ModelDownloader;
 
 pub fn download_model(
     model_id: &str,
