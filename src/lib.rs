@@ -11,8 +11,7 @@ use crate::download::ModelDownloader;
 
 #[pyfunction]
 fn download_model(model_id: &str, local_dir: Option<String>, token: Option<String>) -> PyResult<String> {
-    println!("Starting download for model: {}", model_id);
-    
+
     // 创建配置
     let mut config = Config::default();
     if let Some(dir) = local_dir {

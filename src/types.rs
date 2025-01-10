@@ -6,21 +6,16 @@ pub struct AuthInfo {
     pub token: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 pub struct RepoInfo {
-    #[serde(default)]
     pub siblings: Vec<FileInfo>,
-    #[serde(default)]
-    pub gated: Value,
-    #[serde(default)]
     pub files: Vec<FileInfo>,
-    #[serde(flatten)]
-    pub extra: std::collections::HashMap<String, Value>,
+    pub gated: serde_json::Value,
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, serde::Deserialize, Clone)]
 pub struct FileInfo {
-    #[serde(rename = "rfilename")]
     pub rfilename: String,
     pub size: Option<u64>,
 } 
