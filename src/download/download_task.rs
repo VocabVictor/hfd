@@ -100,13 +100,28 @@ impl DownloadTask {
         model_id: &str,
         group: &str,
     ) -> PyResult<()> {
-        let url = format!("{}/api/models/{}/resolve/{}", endpoint, model_id, file.rfilename);
+        let url = format!("{}/api/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename);
         let mut request = client.get(&url);
         if let Some(token) = token {
             request = request.header("Authorization", format!("Bearer {}", token));
         }
 
-        // 创建进度条
+        // Try dataset URL first
+        let response = request.send().await;
+        
+        // If dataset URL fails, try model URL
+        let (response, final_url) = if response.is_err() || !response.unwrap().status().is_success() {
+            let model_url = format!("{}/api/models/{}/resolve/main/{}", endpoint, model_id, file.rfilename);
+            let mut model_request = client.get(&model_url);
+            if let Some(token) = &token {
+                model_request = model_request.header("Authorization", format!("Bearer {}", token));
+            }
+            (model_request.send().await, model_url)
+        } else {
+            (response.unwrap(), url)
+        };
+
+        // Create progress bar
         let pb = ProgressBar::new(file.size.unwrap_or(0));
         pb.set_style(ProgressStyle::default_bar()
             .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
@@ -114,13 +129,16 @@ impl DownloadTask {
             .progress_chars("#>-"));
         pb.set_message(format!("{}/{}", group, file.rfilename));
 
-        let response = request.send()
-            .await
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to download: {}", e)))?;
+        let response = match response {
+            Ok(resp) => resp,
+            Err(e) => return Err(pyo3::exceptions::PyRuntimeError::new_err(
+                format!("Failed to download from {}: {}", final_url, e)
+            )),
+        };
 
         if !response.status().is_success() {
             return Err(pyo3::exceptions::PyRuntimeError::new_err(
-                format!("HTTP error: {}", response.status())
+                format!("HTTP error from {}: {}", final_url, response.status())
             ));
         }
 
@@ -152,10 +170,25 @@ impl DownloadTask {
         model_id: &str,
         group: &str,
     ) -> PyResult<()> {
-        let url = format!("{}/api/models/{}/resolve/{}", endpoint, model_id, file.rfilename);
+        // Try dataset URL first
+        let dataset_url = format!("{}/api/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename);
+        let mut request = client.get(&dataset_url);
+        if let Some(token) = &token {
+            request = request.header("Authorization", format!("Bearer {}", token));
+        }
+
+        let response = request.send().await;
+        
+        // If dataset URL fails, try model URL
+        let url = if response.is_err() || !response.unwrap().status().is_success() {
+            format!("{}/api/models/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+        } else {
+            dataset_url
+        };
+
         let total_size = file.size.unwrap_or(0);
 
-        // 创建进度条
+        // Create progress bar
         let pb = Arc::new(ProgressBar::new(total_size));
         pb.set_style(ProgressStyle::default_bar()
             .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
@@ -165,7 +198,7 @@ impl DownloadTask {
 
         let running = Arc::new(AtomicBool::new(true));
         
-        // 使用分块下载
+        // Use chunked download
         if let Err(e) = super::chunk::download_file_with_chunks(
             client,
             url,
