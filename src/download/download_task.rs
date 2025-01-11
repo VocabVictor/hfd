@@ -260,7 +260,8 @@ impl DownloadTask {
         }
 
         if !is_shared {
-            pb.finish_with_message(format!("✓ Downloaded {} (chunked)", file.rfilename));
+            pb.set_message(format!("✓ Downloaded {} (chunked)", file.rfilename));
+            pb.finish();
         }
         Ok(())
     }
@@ -379,7 +380,8 @@ impl DownloadTask {
             task.await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Task failed: {}", e)))??;
         }
 
-        pb.finish_with_message(format!("✓ Downloaded folder {}", name));
+        pb.set_message(format!("✓ Downloaded folder {}", name));
+        pb.finish();
         Ok(())
     }
 
