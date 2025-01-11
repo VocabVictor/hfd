@@ -91,7 +91,7 @@ pub async fn download_file_with_chunks(
                             }
 
                             // 如果文件不存在，先创建文件
-                            if !path.exists() {
+                            if tokio::fs::metadata(&path).await.is_err() {
                                 tokio::fs::File::create(&path)
                                     .await
                                     .map_err(|e| format!("Failed to create file: {}", e))?;
