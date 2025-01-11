@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use indicatif::ProgressBar;
 use tokio::io::{AsyncWriteExt, AsyncSeekExt};
+use std::io::SeekFrom;
 
 #[allow(dead_code)]
 pub async fn download_file_with_chunks(
@@ -35,19 +36,6 @@ pub async fn download_file_with_chunks(
     if downloaded_size == total_size {
         return Ok(());
     }
-
-    // 创建或打开文件
-    let _file = if downloaded_size > 0 {
-        tokio::fs::OpenOptions::new()
-            .write(true)
-            .open(&path)
-            .await
-            .map_err(|e| format!("Failed to open file: {}", e))?
-    } else {
-        tokio::fs::File::create(&path)
-            .await
-            .map_err(|e| format!("Failed to create file: {}", e))?
-    };
 
     // 计算剩余需要下载的块
     let start_chunk = downloaded_size / chunk_size as u64;
@@ -97,7 +85,7 @@ pub async fn download_file_with_chunks(
                                 .await
                                 .map_err(|e| format!("Failed to open file: {}", e))?;
 
-                            file.seek(std::io::SeekFrom::Start(start))
+                            file.seek(SeekFrom::Start(start))
                                 .await
                                 .map_err(|e| format!("Failed to seek: {}", e))?;
 
