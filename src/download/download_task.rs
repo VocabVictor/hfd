@@ -379,10 +379,7 @@ impl DownloadTask {
             task.await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Task failed: {}", e)))??;
         }
 
-        // 只在非共享进度条的情况下显示完成消息
-        if !is_shared {
-            pb.finish_with_message(format!("✓ Downloaded folder {}", name));
-        }
+        pb.finish_with_message(format!("✓ Downloaded folder {}", name));
         Ok(())
     }
 
