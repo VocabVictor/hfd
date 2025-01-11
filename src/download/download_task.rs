@@ -191,19 +191,19 @@ impl DownloadTask {
         }
 
         // 检查文件是否需要下载
-        if let Some(size) = file.size {
-            let downloaded_size = if path.exists() {
-                Self::get_downloaded_size(path).await
-            } else {
-                0
-            };
-            if downloaded_size >= size {
-                if let Some(ref pb) = shared_pb {
-                    pb.inc(size);  // 更新父进度条，但不显示本文件的进度
-                }
-                return Ok(());
-            }
-        }
+        // if let Some(size) = file.size {
+        //     let downloaded_size = if path.exists() {
+        //         Self::get_downloaded_size(path).await
+        //     } else {
+        //         0
+        //     };
+        //     if downloaded_size >= size {
+        //         if let Some(ref pb) = shared_pb {
+        //             pb.inc(size);  // 更新父进度条，但不显示本文件的进度
+        //         }
+        //         return Ok(());
+        //     }
+        // }
 
         // let url = if is_dataset {
         //     format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
@@ -279,19 +279,19 @@ impl DownloadTask {
         }
 
         // 检查文件是否需要下载
-        if let Some(size) = file.size {
-            let downloaded_size = if path.exists() {
-                Self::get_downloaded_size(path).await
-            } else {
-                0
-            };
-            if downloaded_size >= size {
-                if let Some(ref pb) = shared_pb {
-                    pb.inc(size);  // 更新父进度条，但不显示本文件的进度
-                }
-                return Ok(());
-            }
-        }
+        // if let Some(size) = file.size {
+        //     let downloaded_size = if path.exists() {
+        //         Self::get_downloaded_size(path).await
+        //     } else {
+        //         0
+        //     };
+        //     if downloaded_size >= size {
+        //         if let Some(ref pb) = shared_pb {
+        //             pb.inc(size);  // 更新父进度条，但不显示本文件的进度
+        //         }
+        //         return Ok(());
+        //     }
+        // }
 
         // let url = if is_dataset {
         //     format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
