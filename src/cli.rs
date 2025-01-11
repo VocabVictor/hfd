@@ -139,8 +139,8 @@ pub async fn download_file(
     // 创建下载目录
     let base_path = std::path::PathBuf::from(&downloader.cache_dir).join(&model_id);
     
-    // 下载文件
-    downloader.download_files(&model_id, &base_path, is_dataset).await?;
+    // 下载文件，传入已获取的仓库信息
+    downloader.download_files(&model_id, &base_path, is_dataset, repo_info).await?;
 
     Ok(base_path.to_string_lossy().to_string())
 }

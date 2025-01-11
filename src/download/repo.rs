@@ -36,21 +36,21 @@ pub async fn get_repo_info(
 
     println!("[DEBUG] Model API response status: {}", response.status());
 
-    // if response.status().is_success() {
-    //     let json: Value = response.json()
-    //         .await
-    //         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to parse repo info: {}", e)))?;
+    if response.status().is_success() {
+        let json: Value = response.json()
+            .await
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to parse repo info: {}", e)))?;
         
-    //     println!("[DEBUG] Successfully parsed model API response");
-    //     let files = extract_files(client, &config.endpoint, repo_id, auth, &json, false).await?;
-    //     let model_endpoint = format!("{}/models/{}", config.endpoint, repo_id);
-    //     println!("[DEBUG] Created model endpoint: {}", model_endpoint);
-    //     return Ok(RepoInfo {
-    //         model_endpoint: Some(model_endpoint),
-    //         dataset_endpoint: None,
-    //         files,
-    //     });
-    // }
+        println!("[DEBUG] Successfully parsed model API response");
+        let files = extract_files(client, &config.endpoint, repo_id, auth, &json, false).await?;
+        let model_endpoint = format!("{}/models/{}", config.endpoint, repo_id);
+        println!("[DEBUG] Created model endpoint: {}", model_endpoint);
+        return Ok(RepoInfo {
+            model_endpoint: Some(model_endpoint),
+            dataset_endpoint: None,
+            files,
+        });
+    }
 
     // 如果不是 model，尝试作为 dataset 获取
     let dataset_url = format!("{}/api/datasets/{}", config.endpoint, repo_id);
@@ -66,7 +66,6 @@ pub async fn get_repo_info(
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to get repo info: {}", e)))?;
 
     println!("[DEBUG] Dataset API response status: {}", response.status());
-    println!("====================================================================================");
 
     if response.status().is_success() {
         let json: Value = response.json()

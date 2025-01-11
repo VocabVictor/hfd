@@ -44,17 +44,10 @@ impl ModelDownloader {
         model_id: &str,
         base_path: &PathBuf,
         is_dataset: bool,
+        repo_info: RepoInfo,
     ) -> PyResult<()> {
         println!("[DEBUG] Creating endpoint: {}", self.config.endpoint);
         
-        // 获取仓库信息（包含文件列表和大小）
-        let repo_info = super::repo::get_repo_info(
-            &self.client,
-            &self.config,
-            model_id,
-            &self.auth,
-        ).await?;
-
         // 过滤文件列表
         let files: Vec<_> = repo_info.files.into_iter()
             .filter(|file| super::file_filter::should_download(&self.config, file))
