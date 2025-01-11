@@ -52,8 +52,6 @@ pub async fn get_repo_info(
         });
     }
 
-    println!("====================================================================================");
-
     // 如果不是 model，尝试作为 dataset 获取
     let dataset_url = format!("{}/api/datasets/{}", config.endpoint, repo_id);
     println!("[DEBUG] Constructed dataset URL: {}", dataset_url);
@@ -68,7 +66,8 @@ pub async fn get_repo_info(
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to get repo info: {}", e)))?;
 
     println!("[DEBUG] Dataset API response status: {}", response.status());
-
+    println!("====================================================================================");
+    
     if response.status().is_success() {
         let json: Value = response.json()
             .await
