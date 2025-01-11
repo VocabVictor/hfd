@@ -300,13 +300,14 @@ impl DownloadTask {
 
             tasks.push(tokio::spawn(async move {
                 let _permit = permit.acquire().await.unwrap();
-                Self::download_file(
-                    client,
-                    endpoint,
-                    model_id,
-                    file_path,
-                    file,
+                Self::download_small_file(
+                    &client,
+                    &file,
+                    &file_path,
                     token,
+                    &endpoint,
+                    &model_id,
+                    "",
                     is_dataset,
                     Some(pb),
                 )
@@ -328,13 +329,16 @@ impl DownloadTask {
             let model_id = model_id.clone();
 
             tasks.push(tokio::spawn(async move {
-                Self::download_file_chunked(
-                    client,
-                    endpoint,
-                    model_id,
-                    file_path,
-                    file,
+                Self::download_chunked_file(
+                    &client,
+                    &file,
+                    &file_path,
+                    DEFAULT_CHUNK_SIZE,
+                    DEFAULT_MAX_RETRIES,
                     token,
+                    &endpoint,
+                    &model_id,
+                    "",
                     is_dataset,
                     Some(pb),
                 )
