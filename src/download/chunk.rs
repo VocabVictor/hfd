@@ -18,6 +18,11 @@ pub async fn download_file_with_chunks(
     pb: Arc<ProgressBar>,
     running: Arc<AtomicBool>,
 ) -> Result<(), String> {
+    // 检查chunk_size是否为0
+    if chunk_size == 0 {
+        return Err("Chunk size cannot be zero".to_string());
+    }
+
     // 创建父目录
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent)
