@@ -2,7 +2,7 @@ use crate::types::FileInfo;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::Client;
 use pyo3::prelude::*;
 use tokio::io::AsyncWriteExt;
@@ -105,7 +105,7 @@ impl DownloadTask {
         token: Option<String>,
         endpoint: &str,
         model_id: &str,
-        group: &str,
+        _group: &str,
         is_dataset: bool,
         shared_pb: Option<Arc<ProgressBar>>,
     ) -> PyResult<()> {
@@ -122,8 +122,9 @@ impl DownloadTask {
 
         // 创建进度条（如果没有共享进度条）
         let total_size = file.size.unwrap_or(0);
+        let shared_pb = shared_pb.as_ref();
         let pb = if let Some(pb) = shared_pb {
-            pb
+            pb.clone()
         } else {
             let pb = Arc::new(ProgressBar::new(total_size));
             pb.set_style(ProgressStyle::default_bar()
@@ -168,7 +169,7 @@ impl DownloadTask {
         token: Option<String>,
         endpoint: &str,
         model_id: &str,
-        group: &str,
+        _group: &str,
         is_dataset: bool,
         shared_pb: Option<Arc<ProgressBar>>,
     ) -> PyResult<()> {
@@ -182,15 +183,16 @@ impl DownloadTask {
         let total_size = file.size.unwrap_or(0);
 
         // 使用共享进度条或创建新的进度条
+        let shared_pb = shared_pb.as_ref();
         let pb = if let Some(pb) = shared_pb {
-            pb
+            pb.clone()
         } else {
             let pb = Arc::new(ProgressBar::new(total_size));
             pb.set_style(ProgressStyle::default_bar()
                 .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
                 .unwrap()
                 .progress_chars("#>-"));
-            pb.set_message(format!("{}/{}", group, file.rfilename));
+            pb.set_message(format!("{}", &file.rfilename));
             pb.enable_steady_tick(Duration::from_millis(100));
             pb
         };
@@ -210,13 +212,13 @@ impl DownloadTask {
             running,
         ).await {
             if shared_pb.is_none() {
-                pb.finish_with_message(format!("✗ Failed to download {}/{}: {}", group, file.rfilename, e));
+                pb.finish_with_message(format!("✗ Failed to download {}: {}", file.rfilename, e));
             }
             return Err(pyo3::exceptions::PyRuntimeError::new_err(e));
         }
 
         if shared_pb.is_none() {
-            pb.finish_with_message(format!("✓ Downloaded {}/{} (chunked)", group, file.rfilename));
+            pb.finish_with_message(format!("✓ Downloaded {} (chunked)", file.rfilename));
         }
         Ok(())
     }
