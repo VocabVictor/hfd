@@ -307,7 +307,7 @@ impl DownloadTask {
             .progress_chars("#>-"));
 
         // 将文件分为大文件和小文件两组
-        let (large_files, small_files): (Vec<_>, Vec<_>) = need_download_files
+        let (large_files, small_files): (Vec<&FileInfo>, Vec<&FileInfo>) = need_download_files
             .iter()
             .partition(|file| file.size.map_or(false, |size| size > DEFAULT_CHUNK_SIZE as u64));
 
