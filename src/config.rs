@@ -94,7 +94,23 @@ impl Config {
     }
 
     pub fn from_toml(value: toml::Value) -> Result<Self, String> {
-        let mut config = Config::default();
+        let mut config = Config {
+            endpoint: default_endpoint(),
+            use_local_dir: false,
+            local_dir_base: default_model_dir_base(),
+            dataset_dir_base: default_dataset_dir_base(),
+            concurrent_downloads: default_concurrent_downloads(),
+            max_download_speed: None,
+            connections_per_download: default_connections_per_download(),
+            parallel_download_threshold: default_parallel_download_threshold(),
+            buffer_size: default_buffer_size(),
+            chunk_size: default_chunk_size(),
+            max_retries: default_max_retries(),
+            include_patterns: Vec::new(),
+            exclude_patterns: Vec::new(),
+            hf_username: None,
+            hf_token: None,
+        };
 
         println!("Parsing config from TOML:");
         println!("Raw TOML value: {:?}", value);
@@ -133,7 +149,12 @@ impl Config {
         }
         if let Some(buffer_size) = value.get("buffer_size").and_then(|v| v.as_integer()) {
             println!("Found buffer_size: {}", buffer_size);
-            config.buffer_size = buffer_size as usize;
+            let buffer_size = buffer_size as usize;
+            config.buffer_size = if buffer_size == 0 {
+                default_buffer_size()
+            } else {
+                buffer_size
+            };
         }
         if let Some(chunk_size) = value.get("chunk_size").and_then(|v| v.as_integer()) {
             println!("Found chunk_size: {}", chunk_size);
@@ -146,7 +167,12 @@ impl Config {
         }
         if let Some(max_retries) = value.get("max_retries").and_then(|v| v.as_integer()) {
             println!("Found max_retries: {}", max_retries);
-            config.max_retries = max_retries as usize;
+            let max_retries = max_retries as usize;
+            config.max_retries = if max_retries == 0 {
+                default_max_retries()
+            } else {
+                max_retries
+            };
         }
         if let Some(hf_username) = value.get("hf_username").and_then(|v| v.as_str()) {
             println!("Found hf_username: {}", hf_username);
