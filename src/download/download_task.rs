@@ -151,7 +151,7 @@ impl DownloadTask {
         } else {
             let pb = Arc::new(ProgressBar::new(total_size));
             pb.set_style(ProgressStyle::default_bar()
-                .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
+                .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
                 .unwrap()
                 .progress_chars("#>-"));
             pb.set_message(format!("{}", &file.rfilename));
@@ -231,7 +231,7 @@ impl DownloadTask {
         } else {
             let pb = Arc::new(ProgressBar::new(total_size));
             pb.set_style(ProgressStyle::default_bar()
-                .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
+                .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
                 .unwrap()
                 .progress_chars("#>-"));
             pb.set_message(format!("{}", &file.rfilename));

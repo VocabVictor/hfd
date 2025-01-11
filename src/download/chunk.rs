@@ -5,6 +5,7 @@ use std::sync::Arc;
 use indicatif::ProgressBar;
 use tokio::io::{AsyncWriteExt, AsyncSeekExt};
 use std::io::SeekFrom;
+use futures::StreamExt;
 
 #[allow(dead_code)]
 pub async fn download_file_with_chunks(
@@ -50,6 +51,15 @@ pub async fn download_file_with_chunks(
     // 创建信号量来限制并发连接数
     let semaphore = Arc::new(tokio::sync::Semaphore::new(8));  // 使用配置的连接数
 
+    // 创建或打开文件
+    let file = tokio::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(&path)
+        .await
+        .map_err(|e| format!("Failed to open file: {}", e))?;
+    let file = Arc::new(tokio::sync::Mutex::new(file));
+
     // 创建任务队列
     let mut tasks = Vec::new();
 
@@ -65,7 +75,7 @@ pub async fn download_file_with_chunks(
         let url = url.clone();
         let token = token.clone();
         let pb = pb.clone();
-        let path = path.clone();
+        let file = file.clone();
 
         // 创建异步任务
         let task = tokio::spawn(async move {
@@ -82,39 +92,33 @@ pub async fn download_file_with_chunks(
 
                 match request.send().await {
                     Ok(response) => {
-                        if let Ok(chunk_data) = response.bytes().await {
-                            // 确保父目录存在
-                            if let Some(parent) = path.parent() {
-                                tokio::fs::create_dir_all(parent)
-                                    .await
-                                    .map_err(|e| format!("Failed to create directory: {}", e))?;
+                        let mut stream = response.bytes_stream();
+                        let mut downloaded = 0u64;
+                        let mut buffer = Vec::new();
+
+                        while let Some(chunk_result) = stream.next().await {
+                            match chunk_result {
+                                Ok(chunk) => {
+                                    buffer.extend_from_slice(&chunk);
+                                    downloaded += chunk.len() as u64;
+                                    pb.inc(chunk.len() as u64);
+                                }
+                                Err(e) => {
+                                    return Err(format!("Failed to download chunk: {}", e));
+                                }
                             }
-
-                            // 如果文件不存在，先创建文件
-                            if tokio::fs::metadata(&path).await.is_err() {
-                                tokio::fs::File::create(&path)
-                                    .await
-                                    .map_err(|e| format!("Failed to create file: {}", e))?;
-                            }
-
-                            // 打开文件进行写入
-                            let mut file = tokio::fs::OpenOptions::new()
-                                .write(true)
-                                .open(&path)
-                                .await
-                                .map_err(|e| format!("Failed to open file: {}", e))?;
-
-                            file.seek(SeekFrom::Start(start))
-                                .await
-                                .map_err(|e| format!("Failed to seek: {}", e))?;
-
-                            file.write_all(&chunk_data)
-                                .await
-                                .map_err(|e| format!("Failed to write chunk: {}", e))?;
-
-                            pb.inc(chunk_data.len() as u64);
-                            return Ok(());
                         }
+
+                        // 写入文件
+                        let mut file = file.lock().await;
+                        file.seek(SeekFrom::Start(start))
+                            .await
+                            .map_err(|e| format!("Failed to seek: {}", e))?;
+                        file.write_all(&buffer)
+                            .await
+                            .map_err(|e| format!("Failed to write chunk: {}", e))?;
+
+                        return Ok(());
                     }
                     Err(_) => {
                         retries += 1;
