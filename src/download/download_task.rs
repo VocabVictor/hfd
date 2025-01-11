@@ -93,10 +93,13 @@ impl DownloadTask {
                 Self::SmallFile { file, path, group, is_dataset } => {
                     if let Some(size) = file.size {
                         let downloaded_size = Self::get_downloaded_size(&path).await;
+                        println!("DEBUG: Checking file: {}, size: {}, downloaded: {}", file.rfilename, size, downloaded_size);
                         if downloaded_size >= size {
+                            println!("DEBUG: File already downloaded, returning early");
                             println!("✓ File already downloaded: {}", file.rfilename);
                             return Ok(());
                         }
+                        println!("DEBUG: File needs to be downloaded");
                         
                         let result = if size > 0 {
                             let pb = Arc::new(ProgressBar::new(size));
