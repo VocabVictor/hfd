@@ -93,14 +93,12 @@ pub async fn download_file_with_chunks(
                 match request.send().await {
                     Ok(response) => {
                         let mut stream = response.bytes_stream();
-                        let mut downloaded = 0u64;
                         let mut buffer = Vec::new();
 
                         while let Some(chunk_result) = stream.next().await {
                             match chunk_result {
                                 Ok(chunk) => {
                                     buffer.extend_from_slice(&chunk);
-                                    downloaded += chunk.len() as u64;
                                     pb.inc(chunk.len() as u64);
                                 }
                                 Err(e) => {
