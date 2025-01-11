@@ -188,6 +188,9 @@ impl DownloadTask {
                 0
             };
             if downloaded_size >= size {
+                if let Some(ref pb) = shared_pb {
+                    pb.inc(size);  // 更新父进度条，但不显示本文件的进度
+                }
                 return Ok(());
             }
         }
@@ -273,6 +276,9 @@ impl DownloadTask {
                 0
             };
             if downloaded_size >= size {
+                if let Some(ref pb) = shared_pb {
+                    pb.inc(size);  // 更新父进度条，但不显示本文件的进度
+                }
                 return Ok(());
             }
         }
