@@ -225,7 +225,6 @@ impl DownloadTask {
         let total_size = file.size.unwrap_or(0);
 
         // 使用共享进度条或创建新的进度条
-        let is_shared = shared_pb.is_some();
         let pb = if let Some(pb) = shared_pb {
             pb
         } else {
@@ -253,13 +252,13 @@ impl DownloadTask {
             pb.clone(),
             running,
         ).await {
-            if !is_shared {
+            if shared_pb.is_none() {
                 pb.finish_with_message(format!("✗ Failed to download {}: {}", file.rfilename, e));
             }
             return Err(pyo3::exceptions::PyRuntimeError::new_err(e));
         }
 
-        if !is_shared {
+        if shared_pb.is_none() {
             pb.finish_with_message(format!("✓ Downloaded {} (chunked)", file.rfilename));
         }
         Ok(())
