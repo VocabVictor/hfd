@@ -97,7 +97,16 @@ impl DownloadTask {
                     Self::download_chunked_file(client, &file, &path, chunk_size, max_retries, token, endpoint, model_id, &group, is_dataset, None).await
                 }
                 Self::Folder { name, files, base_path, is_dataset } => {
-                    Self::download_folder(client, &name, &files, &base_path, token, endpoint, model_id, is_dataset).await
+                    Self::download_folder(
+                        client.clone(),
+                        endpoint.to_string(),
+                        model_id.to_string(),
+                        base_path,
+                        name,
+                        files,
+                        token,
+                        is_dataset
+                    ).await
                 }
             }
         })
@@ -241,7 +250,8 @@ impl DownloadTask {
     ) -> PyResult<()> {
         use crate::INTERRUPT_FLAG;
 
-        let folder_path = base_path.join(name);
+        let folder_name = name.clone();  // Clone name for later use
+        let folder_path = base_path.join(&name);
         tokio::fs::create_dir_all(&folder_path)
             .await
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
@@ -273,7 +283,7 @@ impl DownloadTask {
             .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
             .unwrap()
             .progress_chars("#>-"));
-        pb.set_message(format!("Downloading folder {}", name));
+        pb.set_message(format!("Downloading folder {}", folder_name));
         pb.enable_steady_tick(Duration::from_millis(100));
 
         let (large_files, small_files): (Vec<_>, Vec<_>) = need_download_files
@@ -354,7 +364,7 @@ impl DownloadTask {
             task.await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Task failed: {}", e)))??;
         }
 
-        pb.finish_with_message(format!("✓ Downloaded folder {}", name));
+        pb.finish_with_message(format!("✓ Downloaded folder {}", folder_name));
         Ok(())
     }
 
