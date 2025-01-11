@@ -83,7 +83,7 @@ impl DownloadTask {
         token: Option<String>,
         endpoint: &'a str,
         model_id: &'a str,
-    ) -> Pin<Box<dyn Future<Output = PyResult<()>> + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = PyResult<()>> + Send + 'a>> {
         Box::pin(async move {
             match self {
                 Self::SmallFile { file, path, group, is_dataset } => {
@@ -239,12 +239,6 @@ impl DownloadTask {
             .unwrap()
             .progress_chars("#>-"));
 
-        // 在后台线程中渲染进度条
-        let mp_clone = mp.clone();
-        tokio::task::spawn_blocking(move || {
-            mp_clone.clear().unwrap();
-        });
-
         // 下载所有文件
         let mut tasks = Vec::new();
         for file in files {
@@ -279,17 +273,18 @@ impl DownloadTask {
                 let token = token.clone();
                 let endpoint = endpoint.to_string();
                 let model_id = model_id.to_string();
-                let pb_clone = pb.clone();
-                let total_pb_clone = total_pb.clone();
+                let pb = pb.clone();
+                let total_pb = total_pb.clone();
 
-                tasks.push(tokio::spawn(async move {
+                let handle = tokio::spawn(async move {
                     let result = task.execute(&client, token, &endpoint, &model_id).await;
-                    pb_clone.finish_and_clear();
-                    if let Ok(()) = result {
-                        total_pb_clone.inc(size);
+                    if result.is_ok() {
+                        total_pb.inc(size);
                     }
+                    pb.finish_and_clear();
                     result
-                }));
+                });
+                tasks.push(handle);
             }
         }
 
