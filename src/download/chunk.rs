@@ -135,7 +135,7 @@ pub async fn download_file_with_chunks(
                                         *last = now;
                                     }
                                     
-                                    // 更新进度条
+                                    // 更新进度条，但不显示完成消息
                                     pb.inc(chunk_len);
                                 }
                                 Err(e) => {
