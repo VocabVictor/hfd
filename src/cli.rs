@@ -134,7 +134,6 @@ pub async fn download_file(
 
     // 根据仓库信息判断是否为数据集
     let is_dataset = repo_info.is_dataset();
-    println!("Detected repository type: {}", if is_dataset { "dataset" } else { "model" });
 
     // 创建下载目录
     let base_path = std::path::PathBuf::from(&downloader.cache_dir).join(&model_id);

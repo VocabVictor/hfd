@@ -73,46 +73,22 @@ fn default_max_retries() -> usize {
 }
 
 impl Config {
-    pub fn load() -> Self {
-        println!("[DEBUG] Starting config load");
-        // 尝试从多个位置加载配置文件
+    pub fn load() -> Result<Self, String> {
         let config_paths = vec![
-            shellexpand::tilde("~/.hfdconfig").into_owned(),
-            "./.hfdconfig".to_string(),
+            dirs::home_dir().map(|p| p.join(".hfdconfig")),
+            Some(PathBuf::from("./.hfdconfig")),
         ];
-
-        println!("[DEBUG] Checking config paths: {:?}", config_paths);
+        let config_paths: Vec<_> = config_paths.into_iter().flatten().collect();
 
         for path in config_paths {
-            println!("[DEBUG] Trying to load config from: {}", path);
             if let Ok(content) = fs::read_to_string(&path) {
-                println!("[DEBUG] Successfully read config file from {}", path);
-                
-                // 使用更宽松的解析选项
-                let parse_result = toml::from_str::<toml::Value>(&content);
-                if let Ok(toml_value) = parse_result {
-                    let config: Config = match Config::from_toml(toml_value) {
-                        Ok(config) => {
-                            println!("[DEBUG] Successfully parsed config from {}", path);
-                            println!("[DEBUG] Loaded endpoint: {}", config.endpoint);
-                            config
-                        }
-                        Err(e) => {
-                            println!("[DEBUG] Failed to parse config from {}: {}", path, e);
-                            continue;
-                        }
-                    };
-                    return config;
-                } else {
-                    println!("[DEBUG] Failed to parse TOML from {}", path);
+                if let Ok(config) = toml::from_str(&content) {
+                    return Ok(config);
                 }
-            } else {
-                println!("[DEBUG] Failed to read config file: {}", path);
             }
         }
 
-        println!("[DEBUG] No valid config found, using default");
-        Config::default()
+        Ok(Self::default())
     }
 
     fn from_toml(value: toml::Value) -> Result<Self, String> {
