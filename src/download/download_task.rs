@@ -94,6 +94,7 @@ impl DownloadTask {
                     if let Some(size) = file.size {
                         let downloaded_size = Self::get_downloaded_size(&path).await;
                         if downloaded_size >= size {
+                            println!("✓ File already downloaded: {}", file.rfilename);
                             return Ok(());
                         }
                         
@@ -121,6 +122,7 @@ impl DownloadTask {
                     if let Some(size) = file.size {
                         let downloaded_size = Self::get_downloaded_size(&path).await;
                         if downloaded_size >= size {
+                            println!("✓ File already downloaded: {}", file.rfilename);
                             return Ok(());
                         }
                         
@@ -342,6 +344,7 @@ impl DownloadTask {
         }
 
         if need_download_files.is_empty() {
+            println!("✓ All files in folder {} are already downloaded", folder_name);
             return Ok(());
         }
 
