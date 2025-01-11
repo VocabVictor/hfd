@@ -49,6 +49,14 @@ impl ModelDownloader {
     ) -> PyResult<()> {
         println!("[DEBUG] Creating endpoint: {}", self.config.endpoint);
         
+        // 使用配置中的路径设置
+        let actual_base_path = if self.config.use_local_dir {
+            let base = shellexpand::tilde(&self.config.local_dir_base).into_owned();
+            PathBuf::from(base).join(model_id)
+        } else {
+            base_path.clone()
+        };
+        
         // 过滤文件列表
         let files: Vec<_> = repo_info.files.into_iter()
             .filter(|file| super::file_filter::should_download(&self.config, file))
@@ -71,16 +79,16 @@ impl ModelDownloader {
 
         // 处理根目录下的文件
         for file in root_files {
-            let file_path = base_path.join(&file.rfilename);
+            let file_path = actual_base_path.join(&file.rfilename);
             
             // 根据文件大小选择下载方式
             let task = if let Some(size) = file.size {
-                if size > 10 * 1024 * 1024 {  // 大于10MB的文件使用分块下载
+                if size > self.config.parallel_download_threshold {  // 使用配置的阈值
                     DownloadTask::large_file(
                         file,
                         file_path,
-                        1024 * 1024,  // 1MB chunks
-                        3,
+                        self.config.chunk_size,  // 使用配置的块大小
+                        self.config.max_retries, // 使用配置的重试次数
                         "",
                         is_dataset,
                     )
@@ -109,7 +117,7 @@ impl ModelDownloader {
             let task = DownloadTask::folder(
                 folder_name,
                 files,
-                base_path.clone(),
+                actual_base_path.clone(),
                 is_dataset,
             );
 

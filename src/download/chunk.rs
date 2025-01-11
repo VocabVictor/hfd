@@ -11,86 +11,97 @@ use tokio::io::AsyncWriteExt;
 pub async fn download_file_with_chunks(
     client: &Client,
     url: String,
-    file_path: PathBuf,
+    path: PathBuf,
     total_size: u64,
     chunk_size: usize,
     max_retries: usize,
     token: Option<String>,
-    progress_bar: Arc<ProgressBar>,
+    pb: Arc<ProgressBar>,
     running: Arc<AtomicBool>,
 ) -> Result<(), String> {
-    println!("Starting chunked download: {}", url);
-    println!("Total size: {} bytes, Chunk size: {} bytes", total_size, chunk_size);
-
-    let mut file = File::create(&file_path)
+    // 创建临时文件
+    let mut temp_file = tokio::fs::File::create(&path)
         .await
         .map_err(|e| format!("Failed to create file: {}", e))?;
 
-    let mut downloaded = 0u64;
-    let mut current_retry = 0;
+    // 计算块数
+    let num_chunks = (total_size + chunk_size as u64 - 1) / chunk_size as u64;
+    let mut chunks: Vec<_> = (0..num_chunks).collect();
 
-    while downloaded < total_size {
-        if !running.load(Ordering::SeqCst) {
-            println!("Download cancelled");
-            return Ok(());
-        }
+    // 创建信号量来限制并发连接数
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(8));  // 使用配置的连接数
 
-        let start = downloaded;
-        let end = std::cmp::min(downloaded + chunk_size as u64, total_size);
-        println!("Downloading chunk: {} - {} bytes", start, end);
+    // 创建任务队列
+    let mut tasks = Vec::new();
 
-        let mut request = client.get(&url);
+    while !chunks.is_empty() && running.load(Ordering::SeqCst) {
+        // 获取一个信号量许可
+        let permit = semaphore.clone().acquire_owned().await.unwrap();
 
-        if let Some(ref token) = token {
-            request = request.header("Authorization", format!("Bearer {}", token));
-        }
+        let chunk_index = chunks.pop().unwrap();
+        let start = chunk_index * chunk_size as u64;
+        let end = std::cmp::min(start + chunk_size as u64, total_size);
+        
+        let client = client.clone();
+        let url = url.clone();
+        let token = token.clone();
+        let pb = pb.clone();
+        let path = path.clone();
 
-        request = request.header("Range", format!("bytes={}-{}", start, end - 1));
+        // 创建异步任务
+        let task = tokio::spawn(async move {
+            let _permit = permit;  // 在作用域结束时自动释放许可
+            
+            let mut retries = 0;
+            while retries < max_retries {
+                let mut request = client.get(&url)
+                    .header("Range", format!("bytes={}-{}", start, end - 1));
 
-        let response = match request.send().await {
-            Ok(resp) => resp,
-            Err(e) => {
-                if current_retry < max_retries {
-                    current_retry += 1;
-                    println!("Retry {} after error: {}", current_retry, e);
-                    continue;
+                if let Some(ref token) = token {
+                    request = request.header("Authorization", format!("Bearer {}", token));
                 }
-                return Err(format!("Failed to download chunk: {}", e));
+
+                match request.send().await {
+                    Ok(response) => {
+                        if let Ok(chunk_data) = response.bytes().await {
+                            // 写入文件
+                            let mut file = tokio::fs::OpenOptions::new()
+                                .write(true)
+                                .open(&path)
+                                .await
+                                .map_err(|e| format!("Failed to open file: {}", e))?;
+
+                            file.seek(std::io::SeekFrom::Start(start))
+                                .await
+                                .map_err(|e| format!("Failed to seek: {}", e))?;
+
+                            file.write_all(&chunk_data)
+                                .await
+                                .map_err(|e| format!("Failed to write chunk: {}", e))?;
+
+                            pb.inc(chunk_data.len() as u64);
+                            return Ok(());
+                        }
+                    }
+                    Err(_) => {
+                        retries += 1;
+                        if retries >= max_retries {
+                            return Err(format!("Failed to download chunk after {} retries", max_retries));
+                        }
+                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                    }
+                }
             }
-        };
+            Ok(())
+        });
 
-        if !response.status().is_success() {
-            if current_retry < max_retries {
-                current_retry += 1;
-                println!("Retry {} after HTTP error: {}", current_retry, response.status());
-                continue;
-            }
-            return Err(format!("HTTP error: {}", response.status()));
-        }
-
-        let mut stream = response.bytes_stream();
-        while let Some(chunk) = stream.next().await {
-            if !running.load(Ordering::SeqCst) {
-                println!("Download cancelled during chunk download");
-                return Ok(());
-            }
-
-            let chunk = chunk.map_err(|e| format!("Failed to read chunk: {}", e))?;
-            file.write_all(&chunk)
-                .await
-                .map_err(|e| format!("Failed to write chunk: {}", e))?;
-
-            downloaded += chunk.len() as u64;
-            progress_bar.inc(chunk.len() as u64);
-        }
-
-        current_retry = 0;
+        tasks.push(task);
     }
 
-    file.flush()
-        .await
-        .map_err(|e| format!("Failed to flush file: {}", e))?;
+    // 等待所有任务完成
+    for task in tasks {
+        task.await.map_err(|e| format!("Task failed: {}", e))??;
+    }
 
-    println!("Chunked download completed: {}", url);
     Ok(())
 } 
