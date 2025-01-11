@@ -54,6 +54,9 @@ pub async fn download_file_with_chunks(
         return Ok(());
     }
 
+    // 设置进度条的初始位置为已下载的大小
+    pb.set_position(downloaded_size);
+
     // 创建信号量来限制并发连接数
     let semaphore = Arc::new(tokio::sync::Semaphore::new(8));  // 使用配置的连接数
 

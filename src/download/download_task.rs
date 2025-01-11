@@ -226,6 +226,14 @@ impl DownloadTask {
         // 使用已经获取的文件大小
         let total_size = file.size.unwrap_or(0);
 
+        // 获取已下载的大小
+        let downloaded_size = Self::get_downloaded_size(path).await;
+        
+        // 如果文件已经完全下载，直接返回
+        if downloaded_size == total_size {
+            return Ok(());
+        }
+
         // 使用共享进度条或创建新的进度条
         let is_shared = shared_pb.is_some();
         let pb = if let Some(ref pb) = shared_pb {
@@ -292,14 +300,18 @@ impl DownloadTask {
             let file_path = folder_path.join(&file.rfilename);
             if Self::should_download(&file_path, file.size).await {
                 if let Some(size) = file.size {
-                    total_download_size += size;
+                    // 获取已下载的大小
+                    let downloaded_size = Self::get_downloaded_size(&file_path).await;
+                    if downloaded_size < size {
+                        total_download_size += size - downloaded_size;
+                        need_download_files.push(file.clone());
+                    }
                 }
-                need_download_files.push(file.clone());
             }
         }
 
         // 如果没有文件需要下载，直接返回，不显示任何消息
-        if need_download_files.is_empty() {
+        if need_download_files.is_empty() || total_download_size == 0 {
             return Ok(());
         }
 
