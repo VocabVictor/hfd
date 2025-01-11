@@ -231,7 +231,7 @@ impl DownloadTask {
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
 
         // 创建多进度条管理器
-        let mp = Arc::new(MultiProgress::new());
+        let mp = MultiProgress::new();
         let total_size: u64 = files.iter().filter_map(|f| f.size).sum();
         let total_pb = mp.add(ProgressBar::new(total_size));
         total_pb.set_style(ProgressStyle::default_bar()
@@ -239,10 +239,10 @@ impl DownloadTask {
             .unwrap()
             .progress_chars("#>-"));
 
-        // 启动进度条渲染
+        // 在后台线程中渲染进度条
         let mp_clone = mp.clone();
         tokio::task::spawn_blocking(move || {
-            mp_clone.join().unwrap();
+            mp_clone.clear().unwrap();
         });
 
         // 下载所有文件

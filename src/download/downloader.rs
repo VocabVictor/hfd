@@ -3,7 +3,6 @@ use crate::config::Config;
 use crate::download::DownloadTask;
 use pyo3::prelude::*;
 use reqwest::Client;
-use serde_json::Value;
 use std::path::PathBuf;
 
 pub struct ModelDownloader {
