@@ -275,39 +275,36 @@ impl DownloadTask {
         model_id: &str,
         is_dataset: bool,
     ) -> PyResult<()> {
-        // 创建文件夹
         let folder_path = base_path.join(name);
         tokio::fs::create_dir_all(&folder_path)
             .await
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
+            .map_err(|e| pyo3::exceptions::PyIOError::new_err(format!("Failed to create directory: {}", e)))?;
 
-        // 计算需要下载的文件总大小
-        let mut total_size = 0;
+        // 先检查哪些文件需要下载
         let mut need_download_files = Vec::new();
+        let mut total_download_size = 0u64;
 
         for file in files {
             let file_path = folder_path.join(&file.rfilename);
             if Self::should_download(&file_path, file.size).await {
                 if let Some(size) = file.size {
-                    total_size += size;
+                    total_download_size += size;
                 }
                 need_download_files.push(file);
             }
         }
 
-        // 如果没有需要下载的文件，直接返回
+        // 如果没有文件需要下载，直接返回
         if need_download_files.is_empty() {
             return Ok(());
         }
 
-        // 创建共享进度条
-        let pb = Arc::new(ProgressBar::new(total_size));
+        // 创建进度条
+        let pb = Arc::new(ProgressBar::new(total_download_size));
         pb.set_style(ProgressStyle::default_bar()
-            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
             .unwrap()
             .progress_chars("#>-"));
-        pb.set_message(format!("Downloading folder: {}", name));
-        pb.enable_steady_tick(Duration::from_millis(100));
 
         // 下载需要的文件
         for file in need_download_files {
@@ -355,7 +352,9 @@ impl DownloadTask {
             }
         }
 
-        pb.finish_with_message(format!("✓ Folder {} downloaded successfully", name));
+        if !need_download_files.is_empty() {
+            pb.finish_with_message(format!("✓ Folder {} downloaded successfully", name));
+        }
         Ok(())
     }
 
