@@ -192,7 +192,8 @@ impl DownloadTask {
 
         // 只有在不是共享进度条的情况下才显示完成消息
         if shared_pb.is_none() {
-            pb.finish_with_message(format!("✓ Downloaded {}", &file.rfilename));
+            pb.set_message(format!("✓ Downloaded {}", &file.rfilename));
+            pb.abandon();
         }
         Ok(())
     }
@@ -255,14 +256,15 @@ impl DownloadTask {
             running,
         ).await {
             if !is_shared {
-                pb.finish_with_message(format!("✗ Failed to download {}: {}", file.rfilename, e));
+                pb.set_message(format!("✗ Failed to download {}: {}", file.rfilename, e));
+                pb.abandon();
             }
             return Err(pyo3::exceptions::PyRuntimeError::new_err(e));
         }
 
         if !is_shared {
             pb.set_message(format!("✓ Downloaded {} (chunked)", file.rfilename));
-            pb.finish();
+            pb.abandon();
         }
         Ok(())
     }
@@ -382,7 +384,7 @@ impl DownloadTask {
         }
 
         pb.set_message(format!("✓ Downloaded folder {}", name));
-        pb.finish();
+        pb.abandon();
         Ok(())
     }
 

@@ -49,6 +49,11 @@ pub async fn download_file_with_chunks(
     let num_chunks = (total_size + chunk_size as u64 - 1) / chunk_size as u64;
     let mut chunks: Vec<_> = (start_chunk..num_chunks).collect();
 
+    // 如果没有需要下载的块，直接返回
+    if chunks.is_empty() {
+        return Ok(());
+    }
+
     // 创建信号量来限制并发连接数
     let semaphore = Arc::new(tokio::sync::Semaphore::new(8));  // 使用配置的连接数
 
