@@ -1,4 +1,7 @@
 use std::env;
+use pyo3::prelude::*;
+use crate::download::ModelDownloader;
+use tokio::runtime::Runtime;
 
 pub struct CliArgs {
     pub model_id: String,
@@ -104,4 +107,58 @@ Example:
     hfd bigscience/bloom-560m --exclude *.safetensors
     hfd meta-llama/Llama-2-7b --config /path/to/config.toml
     hfd meta-llama/Llama-2-7b --hf_username myuser --hf_token mytoken"#);
+}
+
+pub async fn download_file(
+    model_id: String,
+    local_dir: Option<String>,
+    include_patterns: Option<Vec<String>>,
+    exclude_patterns: Option<Vec<String>>,
+    token: Option<String>,
+) -> PyResult<String> {
+    let downloader = ModelDownloader::new(
+        local_dir,
+        include_patterns,
+        exclude_patterns,
+        token,
+    )?;
+
+    // 获取仓库信息
+    let repo_info = download::repo::get_repo_info(
+        &downloader.client,
+        &downloader.config,
+        &model_id,
+        &downloader.auth,
+    ).await?;
+
+    // 根据仓库信息判断是否为数据集
+    let is_dataset = repo_info.is_dataset();
+    println!("Detected repository type: {}", if is_dataset { "dataset" } else { "model" });
+
+    // 创建下载目录
+    let base_path = std::path::PathBuf::from(&downloader.cache_dir).join(&model_id);
+    
+    // 下载文件
+    downloader.download_files(&model_id, &base_path, is_dataset).await?;
+
+    Ok(base_path.to_string_lossy().to_string())
+}
+
+pub fn run_cli() -> PyResult<()> {
+    if let Some(args) = parse_args() {
+        let rt = Runtime::new()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create runtime: {}", e)))?;
+            
+        match rt.block_on(download_file(
+            args.model_id,
+            args.local_dir,
+            args.include_patterns,
+            args.exclude_patterns,
+            args.hf_token,
+        )) {
+            Ok(result) => println!("{}", result),
+            Err(e) => println!("Error: {}", e),
+        }
+    }
+    Ok(())
 } 
