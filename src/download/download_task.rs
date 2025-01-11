@@ -293,28 +293,28 @@ impl DownloadTask {
             }
         }
 
-        let url = if is_dataset {
-            format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
-        } else {
-            format!("{}/models/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
-        };
+        // let url = if is_dataset {
+        //     format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+        // } else {
+        //     format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+        // };
 
-        let running = Arc::new(AtomicBool::new(true));
+        // let running = Arc::new(AtomicBool::new(true));
         
-        // Use chunked download
-        if let Err(e) = super::chunk::download_file_with_chunks(
-            client,
-            url.clone(),
-            path.clone(),
-            file.size.unwrap_or(0),
-            chunk_size,
-            max_retries,
-            token,
-            shared_pb.unwrap_or_else(|| Arc::new(ProgressBar::hidden())),
-            running,
-        ).await {
-            return Err(pyo3::exceptions::PyRuntimeError::new_err(e));
-        }
+        // // Use chunked download
+        // if let Err(e) = super::chunk::download_file_with_chunks(
+        //     client,
+        //     url.clone(),
+        //     path.clone(),
+        //     file.size.unwrap_or(0),
+        //     chunk_size,
+        //     max_retries,
+        //     token,
+        //     shared_pb.unwrap_or_else(|| Arc::new(ProgressBar::hidden())),
+        //     running,
+        // ).await {
+        //     return Err(pyo3::exceptions::PyRuntimeError::new_err(e));
+        // }
 
         Ok(())
     }
