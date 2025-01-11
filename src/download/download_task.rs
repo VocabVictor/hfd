@@ -112,7 +112,7 @@ impl DownloadTask {
         let url = if is_dataset {
             format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
         } else {
-            format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+            format!("{}/models/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
         };
 
         println!("Downloading {} from {}", file.rfilename, url);
@@ -122,7 +122,7 @@ impl DownloadTask {
             request = request.header("Authorization", format!("Bearer {}", token));
         }
 
-        // Create progress bar with better settings
+        // 使用已经获取的文件大小
         let pb = ProgressBar::new(file.size.unwrap_or(0));
         pb.set_style(ProgressStyle::default_bar()
             .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
@@ -175,11 +175,12 @@ impl DownloadTask {
         let url = if is_dataset {
             format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
         } else {
-            format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+            format!("{}/models/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
         };
 
         println!("Downloading (chunked) {} from {}", file.rfilename, url);
 
+        // 使用已经获取的文件大小
         let total_size = file.size.unwrap_or(0);
 
         // Create progress bar with better settings
