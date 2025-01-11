@@ -214,11 +214,21 @@ impl DownloadTask {
         // 获取文件大小和已下载大小
         let total_size = file.size.unwrap_or(0);
         let downloaded_size = Self::get_downloaded_size(path).await;
+        println!("[DEBUG] Checking file: {}", file.rfilename);
+        println!("[DEBUG] Total size: {}, Downloaded size: {}", total_size, downloaded_size);
 
         // 如果文件已经完全下载或不需要下载，直接返回
-        if downloaded_size >= total_size || !Self::should_download(path, file.size).await {
+        if downloaded_size >= total_size {
+            println!("[DEBUG] File already downloaded completely: {}", file.rfilename);
             return Ok(());
         }
+        
+        if !Self::should_download(path, file.size).await {
+            println!("[DEBUG] File does not need download: {}", file.rfilename);
+            return Ok(());
+        }
+
+        println!("[DEBUG] Starting download for file: {}", file.rfilename);
 
         let url = if is_dataset {
             format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
@@ -279,6 +289,9 @@ impl DownloadTask {
         model_id: &str,
         is_dataset: bool,
     ) -> PyResult<()> {
+        use crate::INTERRUPT_FLAG;
+
+        println!("[DEBUG] Checking folder: {}", name);
         let folder_path = base_path.join(name);
         tokio::fs::create_dir_all(&folder_path)
             .await
@@ -289,23 +302,38 @@ impl DownloadTask {
         let mut total_download_size = 0u64;
 
         for file in files {
+            // 检查中断标志
+            if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
+                return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
+            }
+
             let file_path = folder_path.join(&file.rfilename);
             let downloaded_size = Self::get_downloaded_size(&file_path).await;
+            println!("[DEBUG] Checking file in folder: {}", file.rfilename);
+            println!("[DEBUG] Downloaded size: {}", downloaded_size);
             
             if let Some(size) = file.size {
+                println!("[DEBUG] Expected size: {}", size);
                 // 只有当文件不存在或大小小于预期时才需要下载
                 if downloaded_size < size {
                     let remaining_size = size - downloaded_size;
+                    println!("[DEBUG] File needs download: {}, Remaining: {}", file.rfilename, remaining_size);
                     total_download_size += remaining_size;
                     need_download_files.push((file.clone(), remaining_size));
+                } else {
+                    println!("[DEBUG] File complete: {}", file.rfilename);
                 }
             }
         }
 
         // 如果没有文件需要下载，直接返回，不显示任何消息
         if need_download_files.is_empty() || total_download_size == 0 {
+            println!("[DEBUG] No files need download in folder: {}", name);
             return Ok(());
         }
+
+        println!("[DEBUG] Creating progress bar for folder: {}", name);
+        println!("[DEBUG] Total download size: {}", total_download_size);
 
         // 创建进度条
         let pb = Arc::new(ProgressBar::new(total_download_size));
@@ -328,6 +356,12 @@ impl DownloadTask {
         let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_small_files));
 
         for (file, _) in small_files {
+            // 检查中断标志
+            if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
+                pb.abandon_with_message("Download interrupted by user");
+                return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
+            }
+
             let file_path = folder_path.join(&file.rfilename);
             let client = client.clone();
             let token = token.clone();
@@ -356,6 +390,12 @@ impl DownloadTask {
 
         // 处理大文件 - 使用分块下载
         for (file, _) in large_files {
+            // 检查中断标志
+            if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
+                pb.abandon_with_message("Download interrupted by user");
+                return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
+            }
+
             let file_path = folder_path.join(&file.rfilename);
             let client = client.clone();
             let token = token.clone();
@@ -382,39 +422,54 @@ impl DownloadTask {
             tasks.push(task);
         }
 
-        // 等待所有任务完成
+        // 等待所有任务完成，同时检查中断标志
         for task in tasks {
+            // 检查中断标志
+            if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
+                pb.abandon_with_message("Download interrupted by user");
+                return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
+            }
+
             task.await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Task failed: {}", e)))??;
         }
 
-        pb.set_message(format!("✓ Downloaded folder {}", name));
-        pb.abandon();
+        if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
+            pb.abandon_with_message("Download interrupted by user");
+            return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
+        }
+
+        pb.finish_with_message(format!("✓ Downloaded folder {}", name));
         Ok(())
     }
 
     // 检查文件是否需要下载
     async fn should_download(path: &PathBuf, expected_size: Option<u64>) -> bool {
-        if let Ok(metadata) = fs::metadata(path).await {
+        let result = if let Ok(metadata) = fs::metadata(path).await {
             if let Some(size) = expected_size {
                 // 如果文件大小不匹配，需要重新下载
-                // 允许文件大小稍大于预期（可能由于不同系统的文件系统差异）
-                metadata.len() < size
+                let needs_download = metadata.len() < size;
+                println!("[DEBUG] File exists: {}, Current size: {}, Expected size: {}, Needs download: {}", 
+                    path.display(), metadata.len(), size, needs_download);
+                needs_download
             } else {
-                // 如果没有期望的大小信息，但文件存在，则跳过
+                println!("[DEBUG] File exists but no expected size: {}", path.display());
                 false
             }
         } else {
-            // 文件不存在，需要下载
+            println!("[DEBUG] File does not exist: {}", path.display());
             true
-        }
+        };
+        result
     }
 
     // 获取已下载的文件大小，用于断点续传
     async fn get_downloaded_size(path: &PathBuf) -> u64 {
-        if let Ok(metadata) = fs::metadata(path).await {
+        let size = if let Ok(metadata) = fs::metadata(path).await {
             metadata.len()
         } else {
             0
-        }
+        };
+        println!("[DEBUG] Get downloaded size for {}: {}", path.display(), size);
+        size
     }
 } 

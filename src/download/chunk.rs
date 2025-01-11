@@ -7,6 +7,7 @@ use tokio::io::{AsyncWriteExt, AsyncSeekExt};
 use std::io::SeekFrom;
 use futures::StreamExt;
 use std::time::Duration;
+use crate::INTERRUPT_FLAG;
 
 #[allow(dead_code)]
 pub async fn download_file_with_chunks(
@@ -76,7 +77,7 @@ pub async fn download_file_with_chunks(
     // 创建任务队列
     let mut tasks = Vec::new();
 
-    while !chunks.is_empty() && running.load(Ordering::SeqCst) {
+    while !chunks.is_empty() && running.load(Ordering::SeqCst) && !INTERRUPT_FLAG.load(Ordering::SeqCst) {
         // 获取一个信号量许可
         let permit = semaphore.clone().acquire_owned().await.unwrap();
 
@@ -97,7 +98,7 @@ pub async fn download_file_with_chunks(
             let _permit = permit;  // 在作用域结束时自动释放许可
             
             let mut retries = 0;
-            while retries < max_retries {
+            while retries < max_retries && !INTERRUPT_FLAG.load(Ordering::SeqCst) {
                 let mut request = client.get(&url)
                     .header("Range", format!("bytes={}-{}", start, end - 1));
 
@@ -111,6 +112,11 @@ pub async fn download_file_with_chunks(
                         let mut current_pos = start;
 
                         while let Some(chunk_result) = stream.next().await {
+                            // 检查中断标志
+                            if INTERRUPT_FLAG.load(Ordering::SeqCst) {
+                                return Err("Download interrupted by user".to_string());
+                            }
+
                             match chunk_result {
                                 Ok(chunk) => {
                                     let chunk_len = chunk.len() as u64;
@@ -162,10 +168,19 @@ pub async fn download_file_with_chunks(
                     }
                 }
             }
-            Ok(())
+            if INTERRUPT_FLAG.load(Ordering::SeqCst) {
+                Err("Download interrupted by user".to_string())
+            } else {
+                Ok(())
+            }
         });
 
         tasks.push(task);
+    }
+
+    // 如果是因为中断而退出循环，返回中断错误
+    if INTERRUPT_FLAG.load(Ordering::SeqCst) {
+        return Err("Download interrupted by user".to_string());
     }
 
     // 等待所有任务完成

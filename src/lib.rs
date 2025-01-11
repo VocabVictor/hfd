@@ -1,10 +1,25 @@
 use pyo3::prelude::*;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    pub static ref INTERRUPT_FLAG: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+}
 
 mod auth;
 mod config;
 mod download;
 mod types;
 mod cli;
+
+fn setup_interrupt_handler() {
+    let flag = INTERRUPT_FLAG.clone();
+    ctrlc::set_handler(move || {
+        flag.store(true, Ordering::SeqCst);
+        println!("\nReceived Ctrl+C, interrupting downloads...");
+    }).expect("Error setting Ctrl+C handler");
+}
 
 #[pyfunction]
 fn download_file(
@@ -14,6 +29,9 @@ fn download_file(
     exclude_patterns: Option<Vec<String>>,
     hf_token: Option<String>,
 ) -> PyResult<String> {
+    INTERRUPT_FLAG.store(false, Ordering::SeqCst);
+    setup_interrupt_handler();
+
     let rt = tokio::runtime::Runtime::new()
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create runtime: {}", e)))?;
     
@@ -22,6 +40,9 @@ fn download_file(
 
 #[pyfunction]
 fn main() -> PyResult<()> {
+    INTERRUPT_FLAG.store(false, Ordering::SeqCst);
+    setup_interrupt_handler();
+    
     cli::run_cli()
 }
 
