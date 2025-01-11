@@ -52,6 +52,8 @@ pub async fn get_repo_info(
         });
     }
 
+    println!("====================================================================================");
+
     // 如果不是 model，尝试作为 dataset 获取
     let dataset_url = format!("{}/api/datasets/{}", config.endpoint, repo_id);
     println!("[DEBUG] Constructed dataset URL: {}", dataset_url);
