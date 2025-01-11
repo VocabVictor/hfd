@@ -139,19 +139,12 @@ impl Config {
 
     #[allow(dead_code)]
     pub fn get_model_dir(&self, model_id: &str) -> String {
-        println!("[DEBUG] Getting model dir for {}", model_id);
-        println!("[DEBUG] Current endpoint: {}", self.endpoint);
-        
         if self.use_local_dir {
             let base = shellexpand::tilde(&self.local_dir_base).into_owned();
             let path = PathBuf::from(base).join(model_id);
-            let result = path.to_string_lossy().into_owned();
-            println!("[DEBUG] Using local dir: {}", result);
-            result
+            path.to_string_lossy().into_owned()
         } else {
-            let result = format!("models/{}", model_id);
-            println!("[DEBUG] Using relative dir: {}", result);
-            result
+            format!("models/{}", model_id)
         }
     }
 } 

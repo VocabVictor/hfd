@@ -20,7 +20,9 @@ impl ModelDownloader {
         exclude_patterns: Option<Vec<String>>,
         token: Option<String>,
     ) -> PyResult<Self> {
-        let mut config = Config::load();
+        let mut config = Config::load()
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to load config: {}", e)))?;
+
         if let Some(include_patterns) = include_patterns {
             config.include_patterns = include_patterns;
         }
@@ -47,8 +49,6 @@ impl ModelDownloader {
         is_dataset: bool,
         repo_info: RepoInfo,
     ) -> PyResult<()> {
-        println!("[DEBUG] Creating endpoint: {}", self.config.endpoint);
-        
         // 从model_id中提取仓库名称（使用斜杠后面的部分）
         let repo_name = model_id.split('/').last().unwrap_or(model_id);
         
