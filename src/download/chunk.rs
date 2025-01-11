@@ -4,8 +4,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use indicatif::ProgressBar;
 use tokio::io::{AsyncWriteExt, AsyncSeekExt};
-use futures::StreamExt;
-use tokio::fs::File;
 
 #[allow(dead_code)]
 pub async fn download_file_with_chunks(
@@ -20,7 +18,7 @@ pub async fn download_file_with_chunks(
     running: Arc<AtomicBool>,
 ) -> Result<(), String> {
     // 创建临时文件
-    let mut temp_file = tokio::fs::File::create(&path)
+    let _ = tokio::fs::File::create(&path)
         .await
         .map_err(|e| format!("Failed to create file: {}", e))?;
 
