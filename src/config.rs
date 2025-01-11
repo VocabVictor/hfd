@@ -152,6 +152,7 @@ impl Config {
         Ok(config)
     }
 
+    #[allow(dead_code)]
     pub fn get_model_dir(&self, model_id: &str) -> String {
         println!("[DEBUG] Getting model dir for {}", model_id);
         println!("[DEBUG] Current endpoint: {}", self.endpoint);

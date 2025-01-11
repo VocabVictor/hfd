@@ -11,7 +11,6 @@ pub struct ModelDownloader {
     pub(crate) config: Config,
     pub(crate) auth: Auth,
     pub(crate) cache_dir: String,
-    pub(crate) repo_info: Option<Value>,
 }
 
 impl ModelDownloader {
@@ -38,7 +37,6 @@ impl ModelDownloader {
             config,
             auth,
             cache_dir,
-            repo_info: None,
         })
     }
 
@@ -58,7 +56,10 @@ impl ModelDownloader {
             &self.auth,
         ).await?;
 
-        let files = repo_info.files;
+        // 过滤文件列表
+        let files: Vec<_> = repo_info.files.into_iter()
+            .filter(|file| self.should_download(file))
+            .collect();
         
         // 计算总大小
         let total_size: u64 = files.iter()

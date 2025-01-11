@@ -2,7 +2,7 @@ use crate::types::FileInfo;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use reqwest::Client;
 use pyo3::prelude::*;
 use tokio::fs::File;
@@ -230,12 +230,34 @@ impl DownloadTask {
             .await
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
 
+        // 创建多进度条管理器
+        let mp = Arc::new(MultiProgress::new());
+        let total_size: u64 = files.iter().filter_map(|f| f.size).sum();
+        let total_pb = mp.add(ProgressBar::new(total_size));
+        total_pb.set_style(ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) Total Progress")
+            .unwrap()
+            .progress_chars("#>-"));
+
+        // 启动进度条渲染
+        let mp_clone = mp.clone();
+        tokio::task::spawn_blocking(move || {
+            mp_clone.join().unwrap();
+        });
+
         // 下载所有文件
+        let mut tasks = Vec::new();
         for file in files {
             let file_path = folder_path.join(file.rfilename.split('/').last().unwrap_or(&file.rfilename));
             if let Some(size) = file.size {
-                // 只有超过1GB的文件才使用分块下载
-                let task = if size > 100 * 1024 * 1024 { // 1GB
+                let pb = mp.add(ProgressBar::new(size));
+                pb.set_style(ProgressStyle::default_bar()
+                    .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
+                    .unwrap()
+                    .progress_chars("#>-"));
+                pb.set_message(file.rfilename.clone());
+
+                let task = if size > 100 * 1024 * 1024 { // 100MB
                     DownloadTask::ChunkedFile {
                         file: file.clone(),
                         path: file_path,
@@ -252,10 +274,31 @@ impl DownloadTask {
                         is_dataset,
                     }
                 };
-                task.execute(client, token.clone(), endpoint, model_id).await?;
+
+                let client = client.clone();
+                let token = token.clone();
+                let endpoint = endpoint.to_string();
+                let model_id = model_id.to_string();
+                let pb_clone = pb.clone();
+                let total_pb_clone = total_pb.clone();
+
+                tasks.push(tokio::spawn(async move {
+                    let result = task.execute(&client, token, &endpoint, &model_id).await;
+                    pb_clone.finish_and_clear();
+                    if let Ok(()) = result {
+                        total_pb_clone.inc(size);
+                    }
+                    result
+                }));
             }
         }
 
+        // 等待所有下载完成
+        for task in tasks {
+            task.await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Task failed: {}", e)))??;
+        }
+
+        total_pb.finish_with_message("✓ All files downloaded");
         Ok(())
     }
 } 
