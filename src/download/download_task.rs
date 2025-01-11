@@ -250,7 +250,7 @@ impl DownloadTask {
     ) -> PyResult<()> {
         use crate::INTERRUPT_FLAG;
 
-        let folder_name = name.clone();  // Clone name for later use
+        let folder_name = name.clone();
         let folder_path = base_path.join(&name);
         tokio::fs::create_dir_all(&folder_path)
             .await
@@ -266,7 +266,11 @@ impl DownloadTask {
 
             let file_path = folder_path.join(&file.rfilename);
             if let Some(size) = file.size {
-                let downloaded_size = Self::get_downloaded_size(&file_path).await;
+                let downloaded_size = if file_path.exists() {
+                    Self::get_downloaded_size(&file_path).await
+                } else {
+                    0
+                };
                 if downloaded_size < size {
                     total_download_size += size;
                     need_download_files.push(file);
@@ -275,8 +279,11 @@ impl DownloadTask {
         }
 
         if need_download_files.is_empty() {
+            println!("All files are already downloaded.");
             return Ok(());
         }
+
+        println!("Need to download {} files, total size: {} bytes", need_download_files.len(), total_download_size);
 
         let pb = Arc::new(ProgressBar::new(total_download_size));
         pb.set_style(ProgressStyle::default_bar()
@@ -370,32 +377,23 @@ impl DownloadTask {
 
     // 检查文件是否需要下载
     async fn should_download(path: &PathBuf, expected_size: Option<u64>) -> bool {
-        let result = if let Ok(metadata) = fs::metadata(path).await {
+        if let Ok(metadata) = fs::metadata(path).await {
             if let Some(size) = expected_size {
-                // 如果文件大小不匹配，需要重新下载
-                let needs_download = metadata.len() < size;
-                println!("[DEBUG] File exists: {}, Current size: {}, Expected size: {}, Needs download: {}", 
-                    path.display(), metadata.len(), size, needs_download);
-                needs_download
+                metadata.len() < size
             } else {
-                println!("[DEBUG] File exists but no expected size: {}", path.display());
                 false
             }
         } else {
-            println!("[DEBUG] File does not exist: {}", path.display());
             true
-        };
-        result
+        }
     }
 
     // 获取已下载的文件大小，用于断点续传
     async fn get_downloaded_size(path: &PathBuf) -> u64 {
-        let size = if let Ok(metadata) = fs::metadata(path).await {
+        if let Ok(metadata) = fs::metadata(path).await {
             metadata.len()
         } else {
             0
-        };
-        println!("[DEBUG] Get downloaded size for {}: {}", path.display(), size);
-        size
+        }
     }
 } 
