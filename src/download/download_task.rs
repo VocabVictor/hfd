@@ -293,9 +293,11 @@ impl DownloadTask {
             let downloaded_size = Self::get_downloaded_size(&file_path).await;
             
             if let Some(size) = file.size {
-                if downloaded_size < size && Self::should_download(&file_path, Some(size)).await {
-                    total_download_size += size - downloaded_size;
-                    need_download_files.push(file.clone());
+                // 只有当文件不存在或大小小于预期时才需要下载
+                if downloaded_size < size {
+                    let remaining_size = size - downloaded_size;
+                    total_download_size += remaining_size;
+                    need_download_files.push((file.clone(), remaining_size));
                 }
             }
         }
@@ -313,10 +315,10 @@ impl DownloadTask {
             .progress_chars("#>-"));
         pb.enable_steady_tick(Duration::from_millis(100));
 
-        // 将文件分为大文件和小文件两组
-        let (large_files, small_files): (Vec<FileInfo>, Vec<FileInfo>) = need_download_files.clone()
+        // 将文件分为大文件和小文件两组，使用剩余需要下载的大小来判断
+        let (large_files, small_files): (Vec<_>, Vec<_>) = need_download_files
             .into_iter()
-            .partition(|file| file.size.map_or(false, |size| size > DEFAULT_CHUNK_SIZE as u64));
+            .partition(|(_, remaining_size)| *remaining_size > DEFAULT_CHUNK_SIZE as u64);
 
         // 创建并发任务
         let mut tasks = Vec::new();
@@ -325,7 +327,7 @@ impl DownloadTask {
         let max_concurrent_small_files = 32; // 可以根据系统性能调整
         let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_small_files));
 
-        for file in small_files {
+        for (file, _) in small_files {
             let file_path = folder_path.join(&file.rfilename);
             let client = client.clone();
             let token = token.clone();
@@ -353,7 +355,7 @@ impl DownloadTask {
         }
 
         // 处理大文件 - 使用分块下载
-        for file in large_files {
+        for (file, _) in large_files {
             let file_path = folder_path.join(&file.rfilename);
             let client = client.clone();
             let token = token.clone();
@@ -395,7 +397,8 @@ impl DownloadTask {
         if let Ok(metadata) = fs::metadata(path).await {
             if let Some(size) = expected_size {
                 // 如果文件大小不匹配，需要重新下载
-                metadata.len() != size
+                // 允许文件大小稍大于预期（可能由于不同系统的文件系统差异）
+                metadata.len() < size
             } else {
                 // 如果没有期望的大小信息，但文件存在，则跳过
                 false
