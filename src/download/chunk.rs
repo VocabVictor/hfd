@@ -93,29 +93,33 @@ pub async fn download_file_with_chunks(
                 match request.send().await {
                     Ok(response) => {
                         let mut stream = response.bytes_stream();
-                        let mut buffer = Vec::new();
+                        let mut current_pos = start;
 
                         while let Some(chunk_result) = stream.next().await {
                             match chunk_result {
                                 Ok(chunk) => {
-                                    buffer.extend_from_slice(&chunk);
-                                    pb.inc(chunk.len() as u64);
+                                    let chunk_len = chunk.len() as u64;
+                                    let mut file = file.lock().await;
+                                    
+                                    // 定位到正确的写入位置
+                                    file.seek(SeekFrom::Start(current_pos))
+                                        .await
+                                        .map_err(|e| format!("Failed to seek: {}", e))?;
+                                    
+                                    // 写入数据
+                                    file.write_all(&chunk)
+                                        .await
+                                        .map_err(|e| format!("Failed to write chunk: {}", e))?;
+                                    
+                                    // 更新位置和进度条
+                                    current_pos += chunk_len;
+                                    pb.inc(chunk_len);
                                 }
                                 Err(e) => {
                                     return Err(format!("Failed to download chunk: {}", e));
                                 }
                             }
                         }
-
-                        // 写入文件
-                        let mut file = file.lock().await;
-                        file.seek(SeekFrom::Start(start))
-                            .await
-                            .map_err(|e| format!("Failed to seek: {}", e))?;
-                        file.write_all(&buffer)
-                            .await
-                            .map_err(|e| format!("Failed to write chunk: {}", e))?;
-
                         return Ok(());
                     }
                     Err(_) => {
