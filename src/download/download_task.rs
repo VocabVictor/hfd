@@ -212,6 +212,7 @@ impl DownloadTask {
     ) -> PyResult<()> {
         // 检查文件是否需要下载
         if !Self::should_download(path, file.size).await {
+            // 如果文件已经下载完成，直接返回，不显示任何消息
             return Ok(());
         }
 
@@ -295,7 +296,7 @@ impl DownloadTask {
             }
         }
 
-        // 如果没有文件需要下载，直接返回
+        // 如果没有文件需要下载，直接返回，不显示任何消息
         if need_download_files.is_empty() {
             return Ok(());
         }
