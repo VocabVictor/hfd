@@ -1,5 +1,5 @@
 use reqwest::Client;
-use std::path::{PathBuf, Path};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use indicatif::ProgressBar;
