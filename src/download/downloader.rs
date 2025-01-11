@@ -1,7 +1,7 @@
 use crate::auth::Auth;
 use crate::config::Config;
 use crate::download::DownloadTask;
-use crate::types::RepoInfo;
+use crate::types::{RepoInfo, FileInfo};
 use pyo3::prelude::*;
 use reqwest::Client;
 use std::path::PathBuf;

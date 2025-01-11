@@ -261,6 +261,7 @@ impl DownloadTask {
         // 下载所有文件
         let mut tasks = Vec::new();
         let client = Arc::new(client.clone());
+        let name = name.to_string(); // 克隆 name 字符串
 
         for file in files {
             // 从完整路径中提取文件名
@@ -273,6 +274,7 @@ impl DownloadTask {
             let model_id = model_id.to_string();
             let client = client.clone();
             let pb = pb.clone();
+            let name = name.clone(); // 克隆 name 用于每个任务
 
             // 根据文件大小选择下载方式
             if let Some(size) = file.size {
@@ -287,7 +289,7 @@ impl DownloadTask {
                             token,
                             &endpoint,
                             &model_id,
-                            name,
+                            &name,  // 使用克隆的 name
                             is_dataset,
                             Some(pb),
                         ).await
@@ -301,7 +303,7 @@ impl DownloadTask {
                             token,
                             &endpoint,
                             &model_id,
-                            name,
+                            &name,  // 使用克隆的 name
                             is_dataset,
                             Some(pb),
                         ).await
