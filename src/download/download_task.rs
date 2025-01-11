@@ -196,7 +196,7 @@ impl DownloadTask {
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
         }
 
-        检查文件是否需要下载
+        // 检查文件是否需要下载
         if let Some(size) = file.size {
             let downloaded_size = if path.exists() {
                 Self::get_downloaded_size(path).await
@@ -284,7 +284,7 @@ impl DownloadTask {
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
         }
 
-        检查文件是否需要下载
+        // 检查文件是否需要下载
         if let Some(size) = file.size {
             let downloaded_size = if path.exists() {
                 Self::get_downloaded_size(path).await
