@@ -124,7 +124,12 @@ impl Config {
             config.buffer_size = buffer_size as usize;
         }
         if let Some(chunk_size) = value.get("chunk_size").and_then(|v| v.as_integer()) {
-            config.chunk_size = chunk_size as usize;
+            let chunk_size = chunk_size as usize;
+            config.chunk_size = if chunk_size == 0 {
+                default_chunk_size()
+            } else {
+                chunk_size
+            };
         }
         if let Some(max_retries) = value.get("max_retries").and_then(|v| v.as_integer()) {
             config.max_retries = max_retries as usize;
