@@ -355,6 +355,8 @@ impl DownloadTask {
                 if downloaded_size < size {
                     total_download_size += size;
                     need_download_files.push(file);
+                } else {
+                    println!("✓ File already downloaded: {}/{}", folder_name, file.rfilename);
                 }
             }
         }
