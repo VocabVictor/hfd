@@ -340,7 +340,8 @@ impl DownloadTask {
         let mut need_download_files = Vec::new();
         let mut total_download_size = 0;
 
-        for file in files {
+        // 首先打印已下载的文件
+        for file in &files {
             if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
                 return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
             }
@@ -352,11 +353,11 @@ impl DownloadTask {
                 } else {
                     0
                 };
-                if downloaded_size < size {
-                    total_download_size += size;
-                    need_download_files.push(file);
-                } else {
+                if downloaded_size >= size {
                     println!("✓ File already downloaded: {}/{}", folder_name, file.rfilename);
+                } else {
+                    total_download_size += size;
+                    need_download_files.push(file.clone());
                 }
             }
         }

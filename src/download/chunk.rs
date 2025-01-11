@@ -42,6 +42,7 @@ pub async fn download_file_with_chunks(
 
     // 如果文件已经完全下载，直接返回
     if downloaded_size >= total_size {
+        pb.inc(total_size);  // 更新父进度条，但不显示本文件的进度
         return Ok(());
     }
 
