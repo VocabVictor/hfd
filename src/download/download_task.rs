@@ -98,20 +98,10 @@ impl DownloadTask {
                             return Ok(());
                         }
                         
-                        let pb = Arc::new(ProgressBar::new(size));
-                        pb.set_style(ProgressStyle::default_bar()
-                            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
-                            .unwrap()
-                            .progress_chars("#>-"));
-                        pb.set_message(format!("Downloading {}", file.rfilename));
-                        pb.enable_steady_tick(Duration::from_millis(100));
-                        
-                        let result = Self::download_small_file(client, &file, &path, token, endpoint, model_id, &group, is_dataset, Some(pb.clone())).await;
-                        
+                        println!("Starting download of {}", file.rfilename);
+                        let result = Self::download_small_file(client, &file, &path, token, endpoint, model_id, &group, is_dataset, None).await;
                         if result.is_ok() {
-                            pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
-                        } else {
-                            pb.abandon_with_message(format!("Failed to download {}", file.rfilename));
+                            println!("Completed download of {}", file.rfilename);
                         }
                         result
                     } else {
@@ -126,20 +116,10 @@ impl DownloadTask {
                             return Ok(());
                         }
                         
-                        let pb = Arc::new(ProgressBar::new(size));
-                        pb.set_style(ProgressStyle::default_bar()
-                            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
-                            .unwrap()
-                            .progress_chars("#>-"));
-                        pb.set_message(format!("Downloading {}", file.rfilename));
-                        pb.enable_steady_tick(Duration::from_millis(100));
-                        
-                        let result = Self::download_chunked_file(client, &file, &path, chunk_size, max_retries, token, endpoint, model_id, &group, is_dataset, Some(pb.clone())).await;
-                        
+                        println!("Starting download of {}", file.rfilename);
+                        let result = Self::download_chunked_file(client, &file, &path, chunk_size, max_retries, token, endpoint, model_id, &group, is_dataset, None).await;
                         if result.is_ok() {
-                            pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
-                        } else {
-                            pb.abandon_with_message(format!("Failed to download {}", file.rfilename));
+                            println!("Completed download of {}", file.rfilename);
                         }
                         result
                     } else {
@@ -324,6 +304,8 @@ impl DownloadTask {
                 if downloaded_size < size {
                     total_download_size += size;
                     need_download_files.push(file);
+                } else {
+                    println!("File {} is already downloaded.", file.rfilename);
                 }
             }
         }
@@ -348,7 +330,7 @@ impl DownloadTask {
             .partition(|file| file.size.map_or(false, |size| size > DEFAULT_CHUNK_SIZE as u64));
 
         let mut tasks = Vec::new();
-        let max_concurrent_small_files = 32;
+        let max_concurrent_small_files = 3;  // 减少并发数，避免进度显示混乱
         let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_small_files));
 
         for file in small_files {
@@ -367,7 +349,8 @@ impl DownloadTask {
 
             tasks.push(tokio::spawn(async move {
                 let _permit = permit.acquire().await.unwrap();
-                Self::download_small_file(
+                println!("Starting download of {}", file.rfilename);
+                let result = Self::download_small_file(
                     &client,
                     &file,
                     &file_path,
@@ -377,8 +360,11 @@ impl DownloadTask {
                     "",
                     is_dataset,
                     Some(pb),
-                )
-                .await
+                ).await;
+                if result.is_ok() {
+                    println!("Completed download of {}", file.rfilename);
+                }
+                result
             }));
         }
 
@@ -396,7 +382,8 @@ impl DownloadTask {
             let model_id = model_id.clone();
 
             tasks.push(tokio::spawn(async move {
-                Self::download_chunked_file(
+                println!("Starting download of {}", file.rfilename);
+                let result = Self::download_chunked_file(
                     &client,
                     &file,
                     &file_path,
@@ -408,8 +395,11 @@ impl DownloadTask {
                     "",
                     is_dataset,
                     Some(pb),
-                )
-                .await
+                ).await;
+                if result.is_ok() {
+                    println!("Completed download of {}", file.rfilename);
+                }
+                result
             }));
         }
 
