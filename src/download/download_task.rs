@@ -171,19 +171,23 @@ impl DownloadTask {
         is_dataset: bool,
         shared_pb: Option<Arc<ProgressBar>>,
     ) -> PyResult<()> {
-        // 检查文件是否需要下载
-        if let Some(size) = file.size {
-            let downloaded_size = Self::get_downloaded_size(path).await;
-            if downloaded_size >= size {
-                return Ok(());
-            }
-        }
-
         // 确保父目录存在
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
+        }
+
+        // 检查文件是否需要下载
+        if let Some(size) = file.size {
+            let downloaded_size = if path.exists() {
+                Self::get_downloaded_size(path).await
+            } else {
+                0
+            };
+            if downloaded_size >= size {
+                return Ok(());
+            }
         }
 
         let url = if is_dataset {
@@ -252,9 +256,20 @@ impl DownloadTask {
         is_dataset: bool,
         shared_pb: Option<Arc<ProgressBar>>,
     ) -> PyResult<()> {
+        // 确保父目录存在
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
+        }
+
         // 检查文件是否需要下载
         if let Some(size) = file.size {
-            let downloaded_size = Self::get_downloaded_size(path).await;
+            let downloaded_size = if path.exists() {
+                Self::get_downloaded_size(path).await
+            } else {
+                0
+            };
             if downloaded_size >= size {
                 return Ok(());
             }
@@ -322,14 +337,11 @@ impl DownloadTask {
                 if downloaded_size < size {
                     total_download_size += size;
                     need_download_files.push(file);
-                } else {
-                    println!("File {} is already downloaded.", file.rfilename);
                 }
             }
         }
 
         if need_download_files.is_empty() {
-            println!("All files are already downloaded.");
             return Ok(());
         }
 
@@ -448,8 +460,12 @@ impl DownloadTask {
 
     // 获取已下载的文件大小，用于断点续传
     async fn get_downloaded_size(path: &PathBuf) -> u64 {
-        if let Ok(metadata) = fs::metadata(path).await {
-            metadata.len()
+        if path.exists() {
+            if let Ok(metadata) = fs::metadata(path).await {
+                metadata.len()
+            } else {
+                0
+            }
         } else {
             0
         }
