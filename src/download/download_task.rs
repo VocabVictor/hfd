@@ -306,50 +306,76 @@ impl DownloadTask {
             .unwrap()
             .progress_chars("#>-"));
 
-        // 下载需要的文件
-        for file in &need_download_files {
+        // 将文件分为大文件和小文件两组
+        let (large_files, small_files): (Vec<_>, Vec<_>) = need_download_files
+            .iter()
+            .partition(|file| file.size.map_or(false, |size| size > DEFAULT_CHUNK_SIZE as u64));
+
+        // 创建并发任务
+        let mut tasks = Vec::new();
+
+        // 处理小文件 - 使用高并发
+        let max_concurrent_small_files = 32; // 可以根据系统性能调整
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_small_files));
+
+        for file in small_files {
             let file_path = folder_path.join(&file.rfilename);
-            if let Some(size) = file.size {
-                if size > DEFAULT_CHUNK_SIZE as u64 {
-                    Self::download_chunked_file(
-                        client,
-                        *file,
-                        &file_path,
-                        DEFAULT_CHUNK_SIZE,
-                        DEFAULT_MAX_RETRIES,
-                        token.clone(),
-                        endpoint,
-                        model_id,
-                        name,
-                        is_dataset,
-                        Some(pb.clone()),
-                    ).await?;
-                } else {
-                    Self::download_small_file(
-                        client,
-                        *file,
-                        &file_path,
-                        token.clone(),
-                        endpoint,
-                        model_id,
-                        name,
-                        is_dataset,
-                        Some(pb.clone()),
-                    ).await?;
-                }
-            } else {
+            let client = client.clone();
+            let token = token.clone();
+            let endpoint = endpoint.to_string();
+            let model_id = model_id.to_string();
+            let name = name.to_string();
+            let pb = pb.clone();
+            let permit = semaphore.clone().acquire_owned().await.unwrap();
+
+            let task = tokio::spawn(async move {
+                let _permit = permit;
                 Self::download_small_file(
-                    client,
-                    *file,
+                    &client,
+                    file,
                     &file_path,
-                    token.clone(),
-                    endpoint,
-                    model_id,
-                    name,
+                    token,
+                    &endpoint,
+                    &model_id,
+                    &name,
                     is_dataset,
-                    Some(pb.clone()),
-                ).await?;
-            }
+                    Some(pb),
+                ).await
+            });
+            tasks.push(task);
+        }
+
+        // 处理大文件 - 使用较低并发
+        for file in large_files {
+            let file_path = folder_path.join(&file.rfilename);
+            let client = client.clone();
+            let token = token.clone();
+            let endpoint = endpoint.to_string();
+            let model_id = model_id.to_string();
+            let name = name.to_string();
+            let pb = pb.clone();
+
+            let task = tokio::spawn(async move {
+                Self::download_chunked_file(
+                    &client,
+                    file,
+                    &file_path,
+                    DEFAULT_CHUNK_SIZE,
+                    DEFAULT_MAX_RETRIES,
+                    token,
+                    &endpoint,
+                    &model_id,
+                    &name,
+                    is_dataset,
+                    Some(pb),
+                ).await
+            });
+            tasks.push(task);
+        }
+
+        // 等待所有任务完成
+        for task in tasks {
+            task.await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Task failed: {}", e)))??;
         }
 
         if !need_download_files.is_empty() {
