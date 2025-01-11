@@ -302,9 +302,10 @@ impl DownloadTask {
         // 创建进度条
         let pb = Arc::new(ProgressBar::new(total_download_size));
         pb.set_style(ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
             .unwrap()
             .progress_chars("#>-"));
+        pb.enable_steady_tick(Duration::from_millis(100));
 
         // 将文件分为大文件和小文件两组
         let (large_files, small_files): (Vec<FileInfo>, Vec<FileInfo>) = need_download_files.clone()
@@ -345,7 +346,7 @@ impl DownloadTask {
             tasks.push(task);
         }
 
-        // 处理大文件 - 使用较低并发
+        // 处理大文件 - 使用分块下载
         for file in large_files {
             let file_path = folder_path.join(&file.rfilename);
             let client = client.clone();
@@ -361,7 +362,7 @@ impl DownloadTask {
                     &file,
                     &file_path,
                     DEFAULT_CHUNK_SIZE,
-                    DEFAULT_MAX_RETRIES,
+                    3,
                     token,
                     &endpoint,
                     &model_id,
@@ -378,9 +379,7 @@ impl DownloadTask {
             task.await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Task failed: {}", e)))??;
         }
 
-        if !need_download_files.is_empty() {
-            pb.finish_with_message(format!("✓ Folder {} downloaded successfully", name));
-        }
+        pb.finish();
         Ok(())
     }
 
