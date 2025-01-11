@@ -129,10 +129,13 @@ impl DownloadTask {
                 Self::ChunkedFile { file, path, chunk_size, max_retries, group, is_dataset } => {
                     if let Some(size) = file.size {
                         let downloaded_size = Self::get_downloaded_size(&path).await;
+                        println!("DEBUG: Checking chunked file: {}, size: {}, downloaded: {}", file.rfilename, size, downloaded_size);
                         if downloaded_size >= size {
+                            println!("DEBUG: Chunked file already downloaded, returning early");
                             println!("✓ File already downloaded: {}", file.rfilename);
                             return Ok(());
                         }
+                        println!("DEBUG: Chunked file needs to be downloaded");
                         
                         let result = if size > 0 {
                             let pb = Arc::new(ProgressBar::new(size));
