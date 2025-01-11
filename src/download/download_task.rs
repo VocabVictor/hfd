@@ -115,15 +115,14 @@ impl DownloadTask {
             format!("{}/models/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
         };
 
-        println!("Downloading {} from {}", file.rfilename, url);
-
         let mut request = client.get(&url);
         if let Some(ref token) = token {
             request = request.header("Authorization", format!("Bearer {}", token));
         }
 
         // 使用已经获取的文件大小
-        let pb = ProgressBar::new(file.size.unwrap_or(0));
+        let total_size = file.size.unwrap_or(0);
+        let pb = ProgressBar::new(total_size);
         pb.set_style(ProgressStyle::default_bar()
             .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
             .unwrap()
@@ -177,8 +176,6 @@ impl DownloadTask {
         } else {
             format!("{}/models/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
         };
-
-        println!("Downloading (chunked) {} from {}", file.rfilename, url);
 
         // 使用已经获取的文件大小
         let total_size = file.size.unwrap_or(0);

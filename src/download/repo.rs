@@ -157,10 +157,9 @@ async fn resolve_file_info(
     let url = if is_dataset {
         format!("{}/datasets/{}/resolve/main/{}", endpoint, repo_id, rfilename)
     } else {
-        format!("{}/{}/resolve/main/{}", endpoint, repo_id, rfilename)
+        format!("{}/models/{}/resolve/main/{}", endpoint, repo_id, rfilename)
     };
 
-    println!("Resolving file: {}", url);
     let mut request = client.head(&url);
     if let Some(token) = &auth.token {
         request = request.header("Authorization", format!("Bearer {}", token));
