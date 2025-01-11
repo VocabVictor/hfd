@@ -3,9 +3,9 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use indicatif::ProgressBar;
+use tokio::io::{AsyncWriteExt, AsyncSeekExt};
 use futures::StreamExt;
 use tokio::fs::File;
-use tokio::io::AsyncWriteExt;
 
 #[allow(dead_code)]
 pub async fn download_file_with_chunks(
