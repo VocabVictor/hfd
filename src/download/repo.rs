@@ -174,12 +174,6 @@ async fn resolve_file_info(
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<u64>().ok());
 
-    if let Some(s) = size {
-        println!("Got size for {}: {} bytes", rfilename, s);
-    } else {
-        println!("Failed to get size for {}", rfilename);
-    }
-
     Ok(FileInfo {
         rfilename: rfilename.to_string(),
         size,
