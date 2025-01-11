@@ -86,10 +86,10 @@ impl DownloadTask {
         Box::pin(async move {
             match self {
                 Self::SmallFile { file, path, group, is_dataset } => {
-                    Self::download_small_file(client, &file, &path, token, endpoint, model_id, &group, is_dataset).await
+                    Self::download_small_file(client, &file, &path, token, endpoint, model_id, &group, is_dataset, None).await
                 }
                 Self::ChunkedFile { file, path, chunk_size, max_retries, group, is_dataset } => {
-                    Self::download_chunked_file(client, &file, &path, chunk_size, max_retries, token, endpoint, model_id, &group, is_dataset).await
+                    Self::download_chunked_file(client, &file, &path, chunk_size, max_retries, token, endpoint, model_id, &group, is_dataset, None).await
                 }
                 Self::Folder { name, files, base_path, is_dataset } => {
                     Self::download_folder(client, &name, &files, &base_path, token, endpoint, model_id, is_dataset).await
@@ -107,6 +107,7 @@ impl DownloadTask {
         model_id: &str,
         group: &str,
         is_dataset: bool,
+        shared_pb: Option<Arc<ProgressBar>>,
     ) -> PyResult<()> {
         let url = if is_dataset {
             format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
@@ -119,15 +120,20 @@ impl DownloadTask {
             request = request.header("Authorization", format!("Bearer {}", token));
         }
 
-        // 创建进度条
+        // 创建进度条（如果没有共享进度条）
         let total_size = file.size.unwrap_or(0);
-        let pb = ProgressBar::new(total_size);
-        pb.set_style(ProgressStyle::default_bar()
-            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
-            .unwrap()
-            .progress_chars("#>-"));
-        pb.set_message(format!("{}", &file.rfilename));
-        pb.enable_steady_tick(Duration::from_millis(100));
+        let pb = if let Some(pb) = shared_pb {
+            pb
+        } else {
+            let pb = Arc::new(ProgressBar::new(total_size));
+            pb.set_style(ProgressStyle::default_bar()
+                .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
+                .unwrap()
+                .progress_chars("#>-"));
+            pb.set_message(format!("{}", &file.rfilename));
+            pb.enable_steady_tick(Duration::from_millis(100));
+            pb
+        };
 
         let response = request.send()
             .await
@@ -146,7 +152,10 @@ impl DownloadTask {
             pb.inc(chunk.len() as u64);
         }
 
-        pb.finish_with_message(format!("✓ Downloaded {}", &file.rfilename));
+        // 只有在不是共享进度条的情况下才显示完成消息
+        if shared_pb.is_none() {
+            pb.finish_with_message(format!("✓ Downloaded {}", &file.rfilename));
+        }
         Ok(())
     }
 
@@ -161,6 +170,7 @@ impl DownloadTask {
         model_id: &str,
         group: &str,
         is_dataset: bool,
+        shared_pb: Option<Arc<ProgressBar>>,
     ) -> PyResult<()> {
         let url = if is_dataset {
             format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
@@ -171,14 +181,19 @@ impl DownloadTask {
         // 使用已经获取的文件大小
         let total_size = file.size.unwrap_or(0);
 
-        // Create progress bar with better settings
-        let pb = Arc::new(ProgressBar::new(total_size));
-        pb.set_style(ProgressStyle::default_bar()
-            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
-            .unwrap()
-            .progress_chars("#>-"));
-        pb.set_message(format!("{}/{}", group, file.rfilename));
-        pb.enable_steady_tick(Duration::from_millis(100));
+        // 使用共享进度条或创建新的进度条
+        let pb = if let Some(pb) = shared_pb {
+            pb
+        } else {
+            let pb = Arc::new(ProgressBar::new(total_size));
+            pb.set_style(ProgressStyle::default_bar()
+                .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
+                .unwrap()
+                .progress_chars("#>-"));
+            pb.set_message(format!("{}/{}", group, file.rfilename));
+            pb.enable_steady_tick(Duration::from_millis(100));
+            pb
+        };
 
         let running = Arc::new(AtomicBool::new(true));
         
@@ -194,11 +209,15 @@ impl DownloadTask {
             pb.clone(),
             running,
         ).await {
-            pb.finish_with_message(format!("✗ Failed to download {}/{}: {}", group, file.rfilename, e));
+            if shared_pb.is_none() {
+                pb.finish_with_message(format!("✗ Failed to download {}/{}: {}", group, file.rfilename, e));
+            }
             return Err(pyo3::exceptions::PyRuntimeError::new_err(e));
         }
 
-        pb.finish_with_message(format!("✓ Downloaded {}/{} (chunked)", group, file.rfilename));
+        if shared_pb.is_none() {
+            pb.finish_with_message(format!("✓ Downloaded {}/{} (chunked)", group, file.rfilename));
+        }
         Ok(())
     }
 
@@ -218,14 +237,17 @@ impl DownloadTask {
             .await
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
 
-        // 创建多进度条管理器
-        let mp = MultiProgress::new();
+        // 计算文件夹总大小
         let total_size: u64 = files.iter().filter_map(|f| f.size).sum();
-        let total_pb = mp.add(ProgressBar::new(total_size));
-        total_pb.set_style(ProgressStyle::default_bar()
-            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) Total Progress")
+
+        // 为整个文件夹创建一个进度条
+        let pb = Arc::new(ProgressBar::new(total_size));
+        pb.set_style(ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
             .unwrap()
             .progress_chars("#>-"));
+        pb.set_message(format!("Downloading folder: {}", name));
+        pb.enable_steady_tick(Duration::from_millis(100));
 
         // 下载所有文件
         let mut tasks = Vec::new();
@@ -240,6 +262,7 @@ impl DownloadTask {
             let model_id = model_id.to_string();
             let name = name.clone();
             let client = client.clone();
+            let pb = pb.clone();
 
             // 根据文件大小选择下载方式
             if let Some(size) = file.size {
@@ -256,6 +279,7 @@ impl DownloadTask {
                             &model_id,
                             &name,
                             is_dataset,
+                            Some(pb),
                         ).await
                     }));
                 } else {
@@ -269,6 +293,7 @@ impl DownloadTask {
                             &model_id,
                             &name,
                             is_dataset,
+                            Some(pb),
                         ).await
                     }));
                 }
@@ -282,7 +307,7 @@ impl DownloadTask {
             })??;
         }
 
-        total_pb.finish_with_message("✓ All files downloaded successfully");
+        pb.finish_with_message(format!("✓ Folder {} downloaded successfully", name));
         Ok(())
     }
 } 
