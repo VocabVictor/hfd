@@ -1,6 +1,7 @@
 use std::env;
 use pyo3::prelude::*;
-use crate::download::ModelDownloader;
+use crate::download::downloader::ModelDownloader;
+use crate::download::repo;
 use tokio::runtime::Runtime;
 
 pub struct CliArgs {
@@ -124,7 +125,7 @@ pub async fn download_file(
     )?;
 
     // 获取仓库信息
-    let repo_info = download::repo::get_repo_info(
+    let repo_info = repo::get_repo_info(
         &downloader.client,
         &downloader.config,
         &model_id,
