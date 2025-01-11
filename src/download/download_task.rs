@@ -290,7 +290,7 @@ impl DownloadTask {
                 if let Some(size) = file.size {
                     total_download_size += size;
                 }
-                need_download_files.push(file);
+                need_download_files.push(file.clone());
             }
         }
 
@@ -307,8 +307,8 @@ impl DownloadTask {
             .progress_chars("#>-"));
 
         // 将文件分为大文件和小文件两组
-        let (large_files, small_files): (Vec<&FileInfo>, Vec<&FileInfo>) = need_download_files
-            .iter()
+        let (large_files, small_files): (Vec<FileInfo>, Vec<FileInfo>) = need_download_files
+            .into_iter()
             .partition(|file| file.size.map_or(false, |size| size > DEFAULT_CHUNK_SIZE as u64));
 
         // 创建并发任务
@@ -332,7 +332,7 @@ impl DownloadTask {
                 let _permit = permit;
                 Self::download_small_file(
                     &client,
-                    file,
+                    &file,
                     &file_path,
                     token,
                     &endpoint,
@@ -358,7 +358,7 @@ impl DownloadTask {
             let task = tokio::spawn(async move {
                 Self::download_chunked_file(
                     &client,
-                    file,
+                    &file,
                     &file_path,
                     DEFAULT_CHUNK_SIZE,
                     DEFAULT_MAX_RETRIES,
