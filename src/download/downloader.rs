@@ -49,10 +49,17 @@ impl ModelDownloader {
     ) -> PyResult<()> {
         println!("[DEBUG] Creating endpoint: {}", self.config.endpoint);
         
+        // 从model_id中提取仓库名称（使用斜杠后面的部分）
+        let repo_name = model_id.split('/').last().unwrap_or(model_id);
+        
         // 使用配置中的路径设置
         let actual_base_path = if self.config.use_local_dir {
-            let base = shellexpand::tilde(&self.config.local_dir_base).into_owned();
-            PathBuf::from(base).join(model_id)
+            let base = if is_dataset {
+                shellexpand::tilde(&self.config.dataset_dir_base).into_owned()
+            } else {
+                shellexpand::tilde(&self.config.local_dir_base).into_owned()
+            };
+            PathBuf::from(base).join(repo_name)
         } else {
             base_path.clone()
         };

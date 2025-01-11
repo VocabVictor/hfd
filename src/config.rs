@@ -8,8 +8,10 @@ pub struct Config {
     pub endpoint: String,
     #[serde(default)]
     pub use_local_dir: bool,
-    #[serde(default = "default_local_dir_base")]
+    #[serde(default = "default_model_dir_base")]
     pub local_dir_base: String,
+    #[serde(default = "default_dataset_dir_base")]
+    pub dataset_dir_base: String,
     #[serde(default = "default_concurrent_downloads")]
     pub concurrent_downloads: usize,
     #[serde(default)]
@@ -38,8 +40,12 @@ fn default_endpoint() -> String {
     "https://huggingface.co".to_string()
 }
 
-fn default_local_dir_base() -> String {
-    "~/.cache/huggingface/hub".to_string()
+fn default_model_dir_base() -> String {
+    "~/.cache/huggingface/models".to_string()
+}
+
+fn default_dataset_dir_base() -> String {
+    "~/.cache/huggingface/datasets".to_string()
 }
 
 fn default_concurrent_downloads() -> usize {
@@ -120,6 +126,9 @@ impl Config {
         }
         if let Some(local_dir_base) = value.get("local_dir_base").and_then(|v| v.as_str()) {
             config.local_dir_base = local_dir_base.to_string();
+        }
+        if let Some(dataset_dir_base) = value.get("dataset_dir_base").and_then(|v| v.as_str()) {
+            config.dataset_dir_base = dataset_dir_base.to_string();
         }
         if let Some(concurrent_downloads) = value.get("concurrent_downloads").and_then(|v| v.as_integer()) {
             config.concurrent_downloads = concurrent_downloads as usize;
