@@ -233,7 +233,7 @@ pub async fn download_folder(
         let file_path = folder_path.join(&file.rfilename);
         let client = client.clone();
         let token = token.clone();
-        let pb = pb.clone();
+        let _pb = pb.clone();
         let permit = semaphore.clone();
         let endpoint = endpoint.clone();
         let model_id = model_id.clone();
@@ -266,7 +266,7 @@ pub async fn download_folder(
         let file_path = folder_path.join(&file.rfilename);
         let client = client.clone();
         let token = token.clone();
-        let pb = pb.clone();
+        let _pb = pb.clone();
         let endpoint = endpoint.clone();
         let model_id = model_id.clone();
 
