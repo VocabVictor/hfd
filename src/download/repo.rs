@@ -170,9 +170,6 @@ async fn resolve_file_info(
         .await
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to resolve file: {}", e)))?;
 
-    println!("Response status: {}", response.status());
-    println!("Response headers: {:?}", response.headers());
-
     let size = response.headers()
         .get("content-length")
         .and_then(|v| v.to_str().ok())

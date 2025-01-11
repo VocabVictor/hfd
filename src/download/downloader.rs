@@ -57,7 +57,7 @@ impl ModelDownloader {
 
         // 过滤文件列表
         let files: Vec<_> = repo_info.files.into_iter()
-            .filter(|file| self.should_download(file))
+            .filter(|file| super::file_filter::should_download(&self.config, file))
             .collect();
         
         // 计算总大小
