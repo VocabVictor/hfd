@@ -50,17 +50,16 @@ impl ModelDownloader {
     ) -> PyResult<()> {
         println!("[DEBUG] Creating endpoint: {}", self.config.endpoint);
         
-        // 获取文件列表
-        let files = super::file_list::get_file_list(
+        // 获取仓库信息（包含文件列表和大小）
+        let repo_info = super::repo::get_repo_info(
             &self.client,
-            &self.config.endpoint,
+            &self.config,
             model_id,
-            self.auth.token.clone(),
-            is_dataset
-        )
-        .await
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
+            &self.auth,
+        ).await?;
 
+        let files = repo_info.files;
+        
         // 计算总大小
         let total_size: u64 = files.iter()
             .filter_map(|f| f.size)
