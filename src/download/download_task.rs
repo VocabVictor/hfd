@@ -5,7 +5,6 @@ use std::sync::atomic::AtomicBool;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use reqwest::Client;
 use pyo3::prelude::*;
-use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use futures::StreamExt;
 use std::pin::Pin;
@@ -127,27 +126,27 @@ impl DownloadTask {
             .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
             .unwrap()
             .progress_chars("#>-"));
-        pb.set_message(format!("{}", file.rfilename));
+        pb.set_message(format!("{}", &file.rfilename));
         pb.enable_steady_tick(Duration::from_millis(100));
 
         let response = request.send()
             .await
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to download file: {}", e)))?;
 
-        let mut file = tokio::fs::File::create(path)
+        let mut output_file = tokio::fs::File::create(path)
             .await
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create file: {}", e)))?;
 
         let mut stream = response.bytes_stream();
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to download chunk: {}", e)))?;
-            file.write_all(&chunk)
+            output_file.write_all(&chunk)
                 .await
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to write chunk: {}", e)))?;
             pb.inc(chunk.len() as u64);
         }
 
-        pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
+        pb.finish_with_message(format!("✓ Downloaded {}", &file.rfilename));
         Ok(())
     }
 
@@ -230,19 +229,24 @@ impl DownloadTask {
 
         // 下载所有文件
         let mut tasks = Vec::new();
+        let client = Arc::new(client.clone());
+        let name = name.to_string();
+
         for file in files {
             let file_path = folder_path.join(file.rfilename.split('/').last().unwrap_or(&file.rfilename));
             let file = file.clone();
             let token = token.clone();
             let endpoint = endpoint.to_string();
             let model_id = model_id.to_string();
+            let name = name.clone();
+            let client = client.clone();
 
             // 根据文件大小选择下载方式
             if let Some(size) = file.size {
                 if size > 10 * 1024 * 1024 {  // 大于10MB的文件使用分块下载
                     tasks.push(tokio::spawn(async move {
                         Self::download_chunked_file(
-                            client,
+                            &client,
                             &file,
                             &file_path,
                             1024 * 1024,  // 1MB chunks
@@ -250,20 +254,20 @@ impl DownloadTask {
                             token,
                             &endpoint,
                             &model_id,
-                            name,
+                            &name,
                             is_dataset,
                         ).await
                     }));
                 } else {
                     tasks.push(tokio::spawn(async move {
                         Self::download_small_file(
-                            client,
+                            &client,
                             &file,
                             &file_path,
                             token,
                             &endpoint,
                             &model_id,
-                            name,
+                            &name,
                             is_dataset,
                         ).await
                     }));
