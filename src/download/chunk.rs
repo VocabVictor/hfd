@@ -1,5 +1,5 @@
 use reqwest::Client;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use indicatif::ProgressBar;
@@ -83,7 +83,21 @@ pub async fn download_file_with_chunks(
                 match request.send().await {
                     Ok(response) => {
                         if let Ok(chunk_data) = response.bytes().await {
-                            // 写入文件
+                            // 确保父目录存在
+                            if let Some(parent) = path.parent() {
+                                tokio::fs::create_dir_all(parent)
+                                    .await
+                                    .map_err(|e| format!("Failed to create directory: {}", e))?;
+                            }
+
+                            // 如果文件不存在，先创建文件
+                            if !path.exists() {
+                                tokio::fs::File::create(&path)
+                                    .await
+                                    .map_err(|e| format!("Failed to create file: {}", e))?;
+                            }
+
+                            // 打开文件进行写入
                             let mut file = tokio::fs::OpenOptions::new()
                                 .write(true)
                                 .open(&path)
