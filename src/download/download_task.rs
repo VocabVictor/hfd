@@ -196,70 +196,70 @@ impl DownloadTask {
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
         }
 
-        // 检查文件是否需要下载
-        // if let Some(size) = file.size {
-        //     let downloaded_size = if path.exists() {
-        //         Self::get_downloaded_size(path).await
-        //     } else {
-        //         0
-        //     };
-        //     if downloaded_size >= size {
-        //         if let Some(ref pb) = shared_pb {
-        //             pb.inc(size);  // 更新父进度条，但不显示本文件的进度
-        //         }
-        //         return Ok(());
-        //     }
-        // }
+        检查文件是否需要下载
+        if let Some(size) = file.size {
+            let downloaded_size = if path.exists() {
+                Self::get_downloaded_size(path).await
+            } else {
+                0
+            };
+            if downloaded_size >= size {
+                if let Some(ref pb) = shared_pb {
+                    pb.inc(size);  // 更新父进度条，但不显示本文件的进度
+                }
+                return Ok(());
+            }
+        }
 
-        // let url = if is_dataset {
-        //     format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
-        // } else {
-        //     format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
-        // };
+        let url = if is_dataset {
+            format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+        } else {
+            format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+        };
 
-        // let mut request = client.get(&url);
-        // if let Some(ref token) = token {
-        //     request = request.header("Authorization", format!("Bearer {}", token));
-        // }
+        let mut request = client.get(&url);
+        if let Some(ref token) = token {
+            request = request.header("Authorization", format!("Bearer {}", token));
+        }
 
-        // // 获取已下载的大小
-        // let downloaded_size = Self::get_downloaded_size(path).await;
-        // if downloaded_size > 0 {
-        //     request = request.header("Range", format!("bytes={}-", downloaded_size));
-        // }
+        // 获取已下载的大小
+        let downloaded_size = Self::get_downloaded_size(path).await;
+        if downloaded_size > 0 {
+            request = request.header("Range", format!("bytes={}-", downloaded_size));
+        }
 
-        // let response = request.send()
-        //     .await
-        //     .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to download file: {}", e)))?;
+        let response = request.send()
+            .await
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to download file: {}", e)))?;
 
-        // let mut output_file = if downloaded_size > 0 {
-        //     let mut file = tokio::fs::OpenOptions::new()
-        //         .write(true)
-        //         .open(path)
-        //         .await
-        //         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to open file: {}", e)))?;
+        let mut output_file = if downloaded_size > 0 {
+            let mut file = tokio::fs::OpenOptions::new()
+                .write(true)
+                .open(path)
+                .await
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to open file: {}", e)))?;
             
-        //     file.seek(SeekFrom::Start(downloaded_size))
-        //         .await
-        //         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to seek: {}", e)))?;
+            file.seek(SeekFrom::Start(downloaded_size))
+                .await
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to seek: {}", e)))?;
             
-        //     file
-        // } else {
-        //     tokio::fs::File::create(path)
-        //         .await
-        //         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create file: {}", e)))?
-        // };
+            file
+        } else {
+            tokio::fs::File::create(path)
+                .await
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create file: {}", e)))?
+        };
 
-        // let mut stream = response.bytes_stream();
-        // while let Some(chunk) = stream.next().await {
-        //     let chunk = chunk.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to download chunk: {}", e)))?;
-        //     output_file.write_all(&chunk)
-        //         .await
-        //         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to write chunk: {}", e)))?;
-        //     if let Some(ref pb) = shared_pb {
-        //         pb.inc(chunk.len() as u64);
-        //     }
-        // }
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to download chunk: {}", e)))?;
+            output_file.write_all(&chunk)
+                .await
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to write chunk: {}", e)))?;
+            if let Some(ref pb) = shared_pb {
+                pb.inc(chunk.len() as u64);
+            }
+        }
 
         Ok(())
     }
@@ -284,43 +284,43 @@ impl DownloadTask {
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
         }
 
-        // 检查文件是否需要下载
-        // if let Some(size) = file.size {
-        //     let downloaded_size = if path.exists() {
-        //         Self::get_downloaded_size(path).await
-        //     } else {
-        //         0
-        //     };
-        //     if downloaded_size >= size {
-        //         if let Some(ref pb) = shared_pb {
-        //             pb.inc(size);  // 更新父进度条，但不显示本文件的进度
-        //         }
-        //         return Ok(());
-        //     }
-        // }
+        检查文件是否需要下载
+        if let Some(size) = file.size {
+            let downloaded_size = if path.exists() {
+                Self::get_downloaded_size(path).await
+            } else {
+                0
+            };
+            if downloaded_size >= size {
+                if let Some(ref pb) = shared_pb {
+                    pb.inc(size);  // 更新父进度条，但不显示本文件的进度
+                }
+                return Ok(());
+            }
+        }
 
-        // let url = if is_dataset {
-        //     format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
-        // } else {
-        //     format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
-        // };
+        let url = if is_dataset {
+            format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+        } else {
+            format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+        };
 
-        // let running = Arc::new(AtomicBool::new(true));
+        let running = Arc::new(AtomicBool::new(true));
         
-        // // Use chunked download
-        // if let Err(e) = super::chunk::download_file_with_chunks(
-        //     client,
-        //     url.clone(),
-        //     path.clone(),
-        //     file.size.unwrap_or(0),
-        //     chunk_size,
-        //     max_retries,
-        //     token,
-        //     shared_pb.unwrap_or_else(|| Arc::new(ProgressBar::hidden())),
-        //     running,
-        // ).await {
-        //     return Err(pyo3::exceptions::PyRuntimeError::new_err(e));
-        // }
+        // Use chunked download
+        if let Err(e) = super::chunk::download_file_with_chunks(
+            client,
+            url.clone(),
+            path.clone(),
+            file.size.unwrap_or(0),
+            chunk_size,
+            max_retries,
+            token,
+            shared_pb.unwrap_or_else(|| Arc::new(ProgressBar::hidden())),
+            running,
+        ).await {
+            return Err(pyo3::exceptions::PyRuntimeError::new_err(e));
+        }
 
         Ok(())
     }

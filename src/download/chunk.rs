@@ -9,7 +9,6 @@ use futures::StreamExt;
 use std::time::Duration;
 use crate::INTERRUPT_FLAG;
 
-#[allow(dead_code)]
 pub async fn download_file_with_chunks(
     client: &Client,
     url: String,
