@@ -82,8 +82,10 @@ impl Config {
 
         for path in config_paths {
             if let Ok(content) = fs::read_to_string(&path) {
-                if let Ok(config) = toml::from_str(&content) {
-                    return Ok(config);
+                if let Ok(value) = toml::from_str::<toml::Value>(&content) {
+                    if let Ok(config) = Self::from_toml(value) {
+                        return Ok(config);
+                    }
                 }
             }
         }
@@ -91,7 +93,7 @@ impl Config {
         Ok(Self::default())
     }
 
-    fn from_toml(value: toml::Value) -> Result<Self, String> {
+    pub fn from_toml(value: toml::Value) -> Result<Self, String> {
         let mut config = Config::default();
 
         if let Some(endpoint) = value.get("endpoint").and_then(|v| v.as_str()) {
