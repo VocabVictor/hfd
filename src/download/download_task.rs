@@ -489,12 +489,19 @@ impl DownloadTask {
     // 获取已下载的文件大小，用于断点续传
     async fn get_downloaded_size(path: &PathBuf) -> u64 {
         if path.exists() {
-            if let Ok(metadata) = fs::metadata(path).await {
-                metadata.len()
-            } else {
-                0
+            match fs::metadata(path).await {
+                Ok(metadata) => {
+                    let size = metadata.len();
+                    println!("DEBUG: get_downloaded_size for {}: {}", path.display(), size);
+                    size
+                },
+                Err(e) => {
+                    println!("DEBUG: Error getting file size for {}: {}", path.display(), e);
+                    0
+                }
             }
         } else {
+            println!("DEBUG: File does not exist: {}", path.display());
             0
         }
     }
