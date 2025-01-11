@@ -96,34 +96,47 @@ impl Config {
     pub fn from_toml(value: toml::Value) -> Result<Self, String> {
         let mut config = Config::default();
 
+        println!("Parsing config from TOML:");
+        println!("Raw TOML value: {:?}", value);
+
         if let Some(endpoint) = value.get("endpoint").and_then(|v| v.as_str()) {
+            println!("Found endpoint: {}", endpoint);
             config.endpoint = endpoint.to_string();
         }
         if let Some(use_local_dir) = value.get("use_local_dir").and_then(|v| v.as_bool()) {
+            println!("Found use_local_dir: {}", use_local_dir);
             config.use_local_dir = use_local_dir;
         }
         if let Some(local_dir_base) = value.get("local_dir_base").and_then(|v| v.as_str()) {
+            println!("Found local_dir_base: {}", local_dir_base);
             config.local_dir_base = local_dir_base.to_string();
         }
         if let Some(dataset_dir_base) = value.get("dataset_dir_base").and_then(|v| v.as_str()) {
+            println!("Found dataset_dir_base: {}", dataset_dir_base);
             config.dataset_dir_base = dataset_dir_base.to_string();
         }
         if let Some(concurrent_downloads) = value.get("concurrent_downloads").and_then(|v| v.as_integer()) {
+            println!("Found concurrent_downloads: {}", concurrent_downloads);
             config.concurrent_downloads = concurrent_downloads as usize;
         }
         if let Some(max_download_speed) = value.get("max_download_speed").and_then(|v| v.as_integer()) {
+            println!("Found max_download_speed: {}", max_download_speed);
             config.max_download_speed = Some(max_download_speed as u64);
         }
         if let Some(connections_per_download) = value.get("connections_per_download").and_then(|v| v.as_integer()) {
+            println!("Found connections_per_download: {}", connections_per_download);
             config.connections_per_download = connections_per_download as usize;
         }
         if let Some(parallel_download_threshold) = value.get("parallel_download_threshold").and_then(|v| v.as_integer()) {
+            println!("Found parallel_download_threshold: {}", parallel_download_threshold);
             config.parallel_download_threshold = parallel_download_threshold as u64;
         }
         if let Some(buffer_size) = value.get("buffer_size").and_then(|v| v.as_integer()) {
+            println!("Found buffer_size: {}", buffer_size);
             config.buffer_size = buffer_size as usize;
         }
         if let Some(chunk_size) = value.get("chunk_size").and_then(|v| v.as_integer()) {
+            println!("Found chunk_size: {}", chunk_size);
             let chunk_size = chunk_size as usize;
             config.chunk_size = if chunk_size == 0 {
                 default_chunk_size()
@@ -132,15 +145,19 @@ impl Config {
             };
         }
         if let Some(max_retries) = value.get("max_retries").and_then(|v| v.as_integer()) {
+            println!("Found max_retries: {}", max_retries);
             config.max_retries = max_retries as usize;
         }
         if let Some(hf_username) = value.get("hf_username").and_then(|v| v.as_str()) {
+            println!("Found hf_username: {}", hf_username);
             config.hf_username = Some(hf_username.to_string());
         }
         if let Some(hf_token) = value.get("hf_token").and_then(|v| v.as_str()) {
+            println!("Found hf_token: {}", hf_token);
             config.hf_token = Some(hf_token.to_string());
         }
 
+        println!("Final config: {:?}", config);
         Ok(config)
     }
 
