@@ -92,6 +92,12 @@ impl DownloadTask {
             match self {
                 Self::SmallFile { file, path, group, is_dataset } => {
                     if let Some(size) = file.size {
+                        let downloaded_size = Self::get_downloaded_size(&path).await;
+                        if downloaded_size >= size {
+                            println!("File {} is already downloaded.", file.rfilename);
+                            return Ok(());
+                        }
+                        
                         let pb = Arc::new(ProgressBar::new(size));
                         pb.set_style(ProgressStyle::default_bar()
                             .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
@@ -114,6 +120,12 @@ impl DownloadTask {
                 }
                 Self::ChunkedFile { file, path, chunk_size, max_retries, group, is_dataset } => {
                     if let Some(size) = file.size {
+                        let downloaded_size = Self::get_downloaded_size(&path).await;
+                        if downloaded_size >= size {
+                            println!("File {} is already downloaded.", file.rfilename);
+                            return Ok(());
+                        }
+                        
                         let pb = Arc::new(ProgressBar::new(size));
                         pb.set_style(ProgressStyle::default_bar()
                             .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
