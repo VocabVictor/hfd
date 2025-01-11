@@ -1,11 +1,12 @@
 use reqwest::Client;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use indicatif::ProgressBar;
 use tokio::io::{AsyncWriteExt, AsyncSeekExt};
 use std::io::SeekFrom;
 use futures::StreamExt;
+use std::time::Duration;
 
 #[allow(dead_code)]
 pub async fn download_file_with_chunks(
@@ -60,6 +61,10 @@ pub async fn download_file_with_chunks(
         .map_err(|e| format!("Failed to open file: {}", e))?;
     let file = Arc::new(tokio::sync::Mutex::new(file));
 
+    // 创建共享的下载速度计数器
+    let bytes_downloaded = Arc::new(AtomicU64::new(0));
+    let last_update = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
+
     // 创建任务队列
     let mut tasks = Vec::new();
 
@@ -76,6 +81,8 @@ pub async fn download_file_with_chunks(
         let token = token.clone();
         let pb = pb.clone();
         let file = file.clone();
+        let bytes_downloaded = bytes_downloaded.clone();
+        let last_update = last_update.clone();
 
         // 创建异步任务
         let task = tokio::spawn(async move {
@@ -111,8 +118,24 @@ pub async fn download_file_with_chunks(
                                         .await
                                         .map_err(|e| format!("Failed to write chunk: {}", e))?;
                                     
-                                    // 更新位置和进度条
+                                    // 更新位置
                                     current_pos += chunk_len;
+
+                                    // 更新下载速度统计
+                                    bytes_downloaded.fetch_add(chunk_len, Ordering::Relaxed);
+                                    let mut last = last_update.lock().unwrap();
+                                    let now = std::time::Instant::now();
+                                    if now.duration_since(*last) >= Duration::from_millis(100) {
+                                        let bytes = bytes_downloaded.swap(0, Ordering::Relaxed);
+                                        let elapsed = now.duration_since(*last).as_secs_f64();
+                                        if elapsed > 0.0 {
+                                            let speed = bytes as f64 / elapsed;
+                                            pb.set_message(format!("{:.2} MiB/s", speed / 1024.0 / 1024.0));
+                                        }
+                                        *last = now;
+                                    }
+                                    
+                                    // 更新进度条
                                     pb.inc(chunk_len);
                                 }
                                 Err(e) => {
