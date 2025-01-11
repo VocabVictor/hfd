@@ -225,20 +225,19 @@ impl DownloadTask {
         let total_size = file.size.unwrap_or(0);
 
         // 使用共享进度条或创建新的进度条
+        let is_shared = shared_pb.is_some();
         let pb = if let Some(pb) = shared_pb {
             pb
         } else {
-            Arc::new(ProgressBar::new(total_size))
-        };
-
-        if shared_pb.is_none() {
+            let pb = Arc::new(ProgressBar::new(total_size));
             pb.set_style(ProgressStyle::default_bar()
                 .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
                 .unwrap()
                 .progress_chars("#>-"));
             pb.set_message(format!("{}", &file.rfilename));
             pb.enable_steady_tick(Duration::from_millis(100));
-        }
+            pb
+        };
 
         let running = Arc::new(AtomicBool::new(true));
         
@@ -254,13 +253,13 @@ impl DownloadTask {
             pb.clone(),
             running,
         ).await {
-            if shared_pb.is_none() {
+            if !is_shared {
                 pb.finish_with_message(format!("✗ Failed to download {}: {}", file.rfilename, e));
             }
             return Err(pyo3::exceptions::PyRuntimeError::new_err(e));
         }
 
-        if shared_pb.is_none() {
+        if !is_shared {
             pb.finish_with_message(format!("✓ Downloaded {} (chunked)", file.rfilename));
         }
         Ok(())
