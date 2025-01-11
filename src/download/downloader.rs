@@ -1,10 +1,10 @@
 use crate::auth::Auth;
 use crate::config::Config;
-use crate::download::DownloadTask;
 use crate::types::{RepoInfo, FileInfo};
 use pyo3::prelude::*;
 use reqwest::Client;
 use std::path::PathBuf;
+use super::{download_small_file, download_chunked_file, download_folder};
 
 pub struct ModelDownloader {
     pub(crate) client: Client,
@@ -89,46 +89,55 @@ impl ModelDownloader {
             let file_path = actual_base_path.join(&file.rfilename);
             
             // 根据文件大小选择下载方式
-            let task = if let Some(size) = file.size {
+            if let Some(size) = file.size {
                 if size > self.config.parallel_download_threshold {  // 使用配置的阈值
-                    DownloadTask::large_file(
-                        file,
-                        file_path,
+                    download_chunked_file(
+                        &self.client,
+                        &file,
+                        &file_path,
                         self.config.chunk_size,  // 使用配置的块大小
                         self.config.max_retries, // 使用配置的重试次数
-                        "",
+                        self.auth.token.clone(),
+                        &self.config.endpoint,
+                        model_id,
                         is_dataset,
-                    )
+                    ).await?;
                 } else {
-                    DownloadTask::single_file(
-                        file,
-                        file_path,
-                        "",
+                    download_small_file(
+                        &self.client,
+                        &file,
+                        &file_path,
+                        self.auth.token.clone(),
+                        &self.config.endpoint,
+                        model_id,
                         is_dataset,
-                    )
+                    ).await?;
                 }
             } else {
-                DownloadTask::single_file(
-                    file,
-                    file_path,
-                    "",
+                download_small_file(
+                    &self.client,
+                    &file,
+                    &file_path,
+                    self.auth.token.clone(),
+                    &self.config.endpoint,
+                    model_id,
                     is_dataset,
-                )
-            };
-
-            task.execute(&self.client, self.auth.token.clone(), &self.config.endpoint, model_id).await?;
+                ).await?;
+            }
         }
 
         // 处理文件夹
         for (folder_name, files) in folder_files {
-            let task = DownloadTask::folder(
+            download_folder(
+                self.client.clone(),
+                self.config.endpoint.clone(),
+                model_id.to_string(),
+                actual_base_path.clone(),
                 folder_name,
                 files,
-                actual_base_path.clone(),
+                self.auth.token.clone(),
                 is_dataset,
-            );
-
-            task.execute(&self.client, self.auth.token.clone(), &self.config.endpoint, model_id).await?;
+            ).await?;
         }
 
         Ok(())
