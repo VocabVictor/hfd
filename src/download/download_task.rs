@@ -40,7 +40,7 @@ pub enum DownloadTask {
 
 #[allow(dead_code)]
 impl DownloadTask {
-    pub fn new_small_file(file: FileInfo, path: PathBuf, group: &str, is_dataset: bool) -> Self {
+    pub fn single_file(file: FileInfo, path: PathBuf, group: &str, is_dataset: bool) -> Self {
         Self::SmallFile {
             file,
             path,
@@ -49,7 +49,7 @@ impl DownloadTask {
         }
     }
 
-    pub fn new_chunked_file(
+    pub fn large_file(
         file: FileInfo,
         path: PathBuf,
         chunk_size: usize,
@@ -67,7 +67,7 @@ impl DownloadTask {
         }
     }
 
-    pub fn new_folder(name: String, files: Vec<FileInfo>, base_path: PathBuf, is_dataset: bool) -> Self {
+    pub fn folder(name: String, files: Vec<FileInfo>, base_path: PathBuf, is_dataset: bool) -> Self {
         Self::Folder {
             name,
             files,
@@ -109,6 +109,13 @@ impl DownloadTask {
         is_dataset: bool,
         shared_pb: Option<Arc<ProgressBar>>,
     ) -> PyResult<()> {
+        // 确保父目录存在
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
+        }
+
         let url = if is_dataset {
             format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
         } else {
@@ -254,15 +261,16 @@ impl DownloadTask {
         // 下载所有文件
         let mut tasks = Vec::new();
         let client = Arc::new(client.clone());
-        let name = name.to_string();
 
         for file in files {
-            let file_path = folder_path.join(file.rfilename.split('/').last().unwrap_or(&file.rfilename));
+            // 从完整路径中提取文件名
+            let file_name = file.rfilename.split('/').last().unwrap_or(&file.rfilename);
+            let file_path = folder_path.join(file_name);
+            
             let file = file.clone();
             let token = token.clone();
             let endpoint = endpoint.to_string();
             let model_id = model_id.to_string();
-            let name = name.clone();
             let client = client.clone();
             let pb = pb.clone();
 
@@ -279,7 +287,7 @@ impl DownloadTask {
                             token,
                             &endpoint,
                             &model_id,
-                            &name,
+                            name,
                             is_dataset,
                             Some(pb),
                         ).await
@@ -293,7 +301,7 @@ impl DownloadTask {
                             token,
                             &endpoint,
                             &model_id,
-                            &name,
+                            name,
                             is_dataset,
                             Some(pb),
                         ).await

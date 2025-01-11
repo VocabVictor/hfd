@@ -53,24 +53,68 @@ impl ModelDownloader {
         let files: Vec<_> = repo_info.files.into_iter()
             .filter(|file| super::file_filter::should_download(&self.config, file))
             .collect();
-        
-        // 计算总大小
-        let total_size: u64 = files.iter()
-            .filter_map(|f| f.size)
-            .sum();
 
-        println!("Found {} files to download, total size: {:.2} MB", files.len(), total_size as f64 / 1024.0 / 1024.0);
+        // 将文件按文件夹分组
+        let mut folder_files: std::collections::HashMap<String, Vec<FileInfo>> = std::collections::HashMap::new();
+        let mut root_files: Vec<FileInfo> = Vec::new();
 
-        // 创建下载任务
-        let task = DownloadTask::new_folder(
-            "".to_string(),
-            files,
-            base_path.clone(),
-            is_dataset,
-        );
+        for file in files {
+            if let Some(folder) = file.rfilename.find('/') {
+                let folder_name = file.rfilename[..folder].to_string();
+                folder_files.entry(folder_name)
+                    .or_insert_with(Vec::new)
+                    .push(file);
+            } else {
+                root_files.push(file);
+            }
+        }
 
-        // 执行下载
-        task.execute(&self.client, self.auth.token.clone(), &self.config.endpoint, model_id).await?;
+        // 处理根目录下的文件
+        for file in root_files {
+            let file_path = base_path.join(&file.rfilename);
+            
+            // 根据文件大小选择下载方式
+            let task = if let Some(size) = file.size {
+                if size > 10 * 1024 * 1024 {  // 大于10MB的文件使用分块下载
+                    DownloadTask::large_file(
+                        file,
+                        file_path,
+                        1024 * 1024,  // 1MB chunks
+                        3,
+                        "",
+                        is_dataset,
+                    )
+                } else {
+                    DownloadTask::single_file(
+                        file,
+                        file_path,
+                        "",
+                        is_dataset,
+                    )
+                }
+            } else {
+                DownloadTask::single_file(
+                    file,
+                    file_path,
+                    "",
+                    is_dataset,
+                )
+            };
+
+            task.execute(&self.client, self.auth.token.clone(), &self.config.endpoint, model_id).await?;
+        }
+
+        // 处理文件夹
+        for (folder_name, files) in folder_files {
+            let task = DownloadTask::folder(
+                folder_name,
+                files,
+                base_path.clone(),
+                is_dataset,
+            );
+
+            task.execute(&self.client, self.auth.token.clone(), &self.config.endpoint, model_id).await?;
+        }
 
         Ok(())
     }
