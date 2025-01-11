@@ -4,7 +4,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use indicatif::ProgressBar;
 use tokio::io::{AsyncWriteExt, AsyncSeekExt};
-use futures::StreamExt;
 
 #[allow(dead_code)]
 pub async fn download_file_with_chunks(
@@ -38,7 +37,7 @@ pub async fn download_file_with_chunks(
     }
 
     // 创建或打开文件
-    let file = if downloaded_size > 0 {
+    let _file = if downloaded_size > 0 {
         tokio::fs::OpenOptions::new()
             .write(true)
             .open(&path)

@@ -5,14 +5,15 @@ use std::sync::atomic::AtomicBool;
 use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::Client;
 use pyo3::prelude::*;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use futures::StreamExt;
 use std::pin::Pin;
 use std::future::Future;
 use std::time::Duration;
 use tokio::fs;
-use std::io::SeekFrom;
-use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+
+const DEFAULT_CHUNK_SIZE: usize = 16 * 1024 * 1024; // 16MB
+const DEFAULT_MAX_RETRIES: usize = 3;
 
 #[derive(Debug)]
 pub enum DownloadTask {
@@ -263,7 +264,7 @@ impl DownloadTask {
         Ok(())
     }
 
-    async fn download_folder(
+    pub async fn download_folder(
         client: &Client,
         name: &str,
         files: &[FileInfo],
@@ -311,13 +312,13 @@ impl DownloadTask {
         for file in need_download_files {
             let file_path = folder_path.join(&file.rfilename);
             if let Some(size) = file.size {
-                if size > chunk_size as u64 {
+                if size > DEFAULT_CHUNK_SIZE as u64 {
                     Self::download_chunked_file(
                         client,
                         file,
                         &file_path,
-                        chunk_size,
-                        max_retries,
+                        DEFAULT_CHUNK_SIZE,
+                        DEFAULT_MAX_RETRIES,
                         token.clone(),
                         endpoint,
                         model_id,
@@ -516,8 +517,8 @@ impl DownloadTask {
                 // 下载需要的文件
                 for (file, file_path) in need_download_files {
                     let task = if let Some(size) = file.size {
-                        if size > chunk_size as u64 {
-                            Self::large_file(file, file_path, chunk_size, max_retries, &name, is_dataset)
+                        if size > DEFAULT_CHUNK_SIZE as u64 {
+                            Self::large_file(file, file_path, DEFAULT_CHUNK_SIZE, DEFAULT_MAX_RETRIES, &name, is_dataset)
                         } else {
                             Self::single_file(file, file_path, &name, is_dataset)
                         }
