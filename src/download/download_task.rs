@@ -225,9 +225,8 @@ impl DownloadTask {
         let total_size = file.size.unwrap_or(0);
 
         // 使用共享进度条或创建新的进度条
-        let shared_pb = shared_pb.as_ref();
         let pb = if let Some(pb) = shared_pb {
-            pb.clone()
+            pb
         } else {
             let pb = Arc::new(ProgressBar::new(total_size));
             pb.set_style(ProgressStyle::default_bar()
