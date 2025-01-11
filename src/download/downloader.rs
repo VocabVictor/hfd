@@ -4,7 +4,7 @@ use crate::types::{RepoInfo, FileInfo};
 use pyo3::prelude::*;
 use reqwest::Client;
 use std::path::PathBuf;
-use super::{download_small_file, download_chunked_file, download_folder};
+use super::{download_small_file, download_chunked_file, download_folder, should_download};
 
 pub struct ModelDownloader {
     pub(crate) client: Client,
@@ -66,7 +66,7 @@ impl ModelDownloader {
         
         // 过滤文件列表
         let files: Vec<_> = repo_info.files.into_iter()
-            .filter(|file| super::file_filter::should_download(&self.config, file))
+            .filter(|file| should_download(&self.config, file))
             .collect();
 
         // 将文件按文件夹分组
