@@ -29,7 +29,7 @@ impl ModelDownloader {
         }
         
         let auth = Auth { token };
-        let cache_dir = cache_dir.unwrap_or_else(|| "./.cache".to_string());
+        let cache_dir = cache_dir.unwrap_or_else(|| config.local_dir_base.clone());
         let client = Client::new();
 
         Ok(Self {
