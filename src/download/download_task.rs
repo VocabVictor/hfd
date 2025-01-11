@@ -94,14 +94,23 @@ impl DownloadTask {
                     if let Some(size) = file.size {
                         let downloaded_size = Self::get_downloaded_size(&path).await;
                         if downloaded_size >= size {
-                            println!("File {} is already downloaded.", file.rfilename);
                             return Ok(());
                         }
                         
-                        println!("Starting download of {}", file.rfilename);
-                        let result = Self::download_small_file(client, &file, &path, token, endpoint, model_id, &group, is_dataset, None).await;
+                        let pb = Arc::new(ProgressBar::new(size));
+                        pb.set_style(ProgressStyle::default_bar()
+                            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
+                            .unwrap()
+                            .progress_chars("#>-"));
+                        pb.set_message(format!("Downloading {}", file.rfilename));
+                        pb.enable_steady_tick(Duration::from_millis(100));
+                        
+                        let result = Self::download_small_file(client, &file, &path, token, endpoint, model_id, &group, is_dataset, Some(pb.clone())).await;
+                        
                         if result.is_ok() {
-                            println!("Completed download of {}", file.rfilename);
+                            pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
+                        } else {
+                            pb.abandon_with_message(format!("Failed to download {}", file.rfilename));
                         }
                         result
                     } else {
@@ -112,14 +121,23 @@ impl DownloadTask {
                     if let Some(size) = file.size {
                         let downloaded_size = Self::get_downloaded_size(&path).await;
                         if downloaded_size >= size {
-                            println!("File {} is already downloaded.", file.rfilename);
                             return Ok(());
                         }
                         
-                        println!("Starting download of {}", file.rfilename);
-                        let result = Self::download_chunked_file(client, &file, &path, chunk_size, max_retries, token, endpoint, model_id, &group, is_dataset, None).await;
+                        let pb = Arc::new(ProgressBar::new(size));
+                        pb.set_style(ProgressStyle::default_bar()
+                            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
+                            .unwrap()
+                            .progress_chars("#>-"));
+                        pb.set_message(format!("Downloading {}", file.rfilename));
+                        pb.enable_steady_tick(Duration::from_millis(100));
+                        
+                        let result = Self::download_chunked_file(client, &file, &path, chunk_size, max_retries, token, endpoint, model_id, &group, is_dataset, Some(pb.clone())).await;
+                        
                         if result.is_ok() {
-                            println!("Completed download of {}", file.rfilename);
+                            pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
+                        } else {
+                            pb.abandon_with_message(format!("Failed to download {}", file.rfilename));
                         }
                         result
                     } else {
