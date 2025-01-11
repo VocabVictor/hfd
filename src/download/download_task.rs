@@ -307,13 +307,13 @@ impl DownloadTask {
             .progress_chars("#>-"));
 
         // 下载需要的文件
-        for file in need_download_files {
+        for file in &need_download_files {
             let file_path = folder_path.join(&file.rfilename);
             if let Some(size) = file.size {
                 if size > DEFAULT_CHUNK_SIZE as u64 {
                     Self::download_chunked_file(
                         client,
-                        file,
+                        *file,
                         &file_path,
                         DEFAULT_CHUNK_SIZE,
                         DEFAULT_MAX_RETRIES,
@@ -327,7 +327,7 @@ impl DownloadTask {
                 } else {
                     Self::download_small_file(
                         client,
-                        file,
+                        *file,
                         &file_path,
                         token.clone(),
                         endpoint,
@@ -340,7 +340,7 @@ impl DownloadTask {
             } else {
                 Self::download_small_file(
                     client,
-                    file,
+                    *file,
                     &file_path,
                     token.clone(),
                     endpoint,
