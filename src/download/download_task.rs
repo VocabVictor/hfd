@@ -205,55 +205,55 @@ impl DownloadTask {
             }
         }
 
-        let url = if is_dataset {
-            format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
-        } else {
-            format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
-        };
+        // let url = if is_dataset {
+        //     format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+        // } else {
+        //     format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+        // };
 
-        let mut request = client.get(&url);
-        if let Some(ref token) = token {
-            request = request.header("Authorization", format!("Bearer {}", token));
-        }
+        // let mut request = client.get(&url);
+        // if let Some(ref token) = token {
+        //     request = request.header("Authorization", format!("Bearer {}", token));
+        // }
 
-        // 获取已下载的大小
-        let downloaded_size = Self::get_downloaded_size(path).await;
-        if downloaded_size > 0 {
-            request = request.header("Range", format!("bytes={}-", downloaded_size));
-        }
+        // // 获取已下载的大小
+        // let downloaded_size = Self::get_downloaded_size(path).await;
+        // if downloaded_size > 0 {
+        //     request = request.header("Range", format!("bytes={}-", downloaded_size));
+        // }
 
-        let response = request.send()
-            .await
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to download file: {}", e)))?;
+        // let response = request.send()
+        //     .await
+        //     .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to download file: {}", e)))?;
 
-        let mut output_file = if downloaded_size > 0 {
-            let mut file = tokio::fs::OpenOptions::new()
-                .write(true)
-                .open(path)
-                .await
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to open file: {}", e)))?;
+        // let mut output_file = if downloaded_size > 0 {
+        //     let mut file = tokio::fs::OpenOptions::new()
+        //         .write(true)
+        //         .open(path)
+        //         .await
+        //         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to open file: {}", e)))?;
             
-            file.seek(SeekFrom::Start(downloaded_size))
-                .await
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to seek: {}", e)))?;
+        //     file.seek(SeekFrom::Start(downloaded_size))
+        //         .await
+        //         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to seek: {}", e)))?;
             
-            file
-        } else {
-            tokio::fs::File::create(path)
-                .await
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create file: {}", e)))?
-        };
+        //     file
+        // } else {
+        //     tokio::fs::File::create(path)
+        //         .await
+        //         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create file: {}", e)))?
+        // };
 
-        let mut stream = response.bytes_stream();
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to download chunk: {}", e)))?;
-            output_file.write_all(&chunk)
-                .await
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to write chunk: {}", e)))?;
-            if let Some(ref pb) = shared_pb {
-                pb.inc(chunk.len() as u64);
-            }
-        }
+        // let mut stream = response.bytes_stream();
+        // while let Some(chunk) = stream.next().await {
+        //     let chunk = chunk.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to download chunk: {}", e)))?;
+        //     output_file.write_all(&chunk)
+        //         .await
+        //         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to write chunk: {}", e)))?;
+        //     if let Some(ref pb) = shared_pb {
+        //         pb.inc(chunk.len() as u64);
+        //     }
+        // }
 
         Ok(())
     }
