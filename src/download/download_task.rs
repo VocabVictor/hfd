@@ -120,42 +120,34 @@ impl DownloadTask {
             request = request.header("Authorization", format!("Bearer {}", token));
         }
 
-        // 使用已经获取的文件大小
+        // 创建进度条
         let total_size = file.size.unwrap_or(0);
         let pb = ProgressBar::new(total_size);
         pb.set_style(ProgressStyle::default_bar()
             .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
             .unwrap()
             .progress_chars("#>-"));
-        pb.set_message(format!("{}/{}", group, file.rfilename));
+        pb.set_message(format!("{}", file.rfilename));
         pb.enable_steady_tick(Duration::from_millis(100));
 
         let response = request.send()
             .await
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(
-                format!("Failed to download from {}: {}", url, e)
-            ))?;
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to download file: {}", e)))?;
 
-        if !response.status().is_success() {
-            return Err(pyo3::exceptions::PyRuntimeError::new_err(
-                format!("HTTP error from {}: {}", url, response.status())
-            ));
-        }
-
-        let mut file_handle = File::create(path)
+        let mut file = tokio::fs::File::create(path)
             .await
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create file: {}", e)))?;
 
         let mut stream = response.bytes_stream();
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to read chunk: {}", e)))?;
-            file_handle.write_all(&chunk)
+            let chunk = chunk.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to download chunk: {}", e)))?;
+            file.write_all(&chunk)
                 .await
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to write chunk: {}", e)))?;
             pb.inc(chunk.len() as u64);
         }
 
-        pb.finish_with_message(format!("✓ Downloaded {}/{}", group, file.rfilename));
+        pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
         Ok(())
     }
 
@@ -240,57 +232,53 @@ impl DownloadTask {
         let mut tasks = Vec::new();
         for file in files {
             let file_path = folder_path.join(file.rfilename.split('/').last().unwrap_or(&file.rfilename));
+            let file = file.clone();
+            let token = token.clone();
+            let endpoint = endpoint.to_string();
+            let model_id = model_id.to_string();
+
+            // 根据文件大小选择下载方式
             if let Some(size) = file.size {
-                let pb = mp.add(ProgressBar::new(size));
-                pb.set_style(ProgressStyle::default_bar()
-                    .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
-                    .unwrap()
-                    .progress_chars("#>-"));
-                pb.set_message(file.rfilename.clone());
-
-                let task = if size > 100 * 1024 * 1024 { // 100MB
-                    DownloadTask::ChunkedFile {
-                        file: file.clone(),
-                        path: file_path,
-                        chunk_size: 16 * 1024 * 1024, // 16MB chunks
-                        max_retries: 3,
-                        group: name.to_string(),
-                        is_dataset,
-                    }
+                if size > 10 * 1024 * 1024 {  // 大于10MB的文件使用分块下载
+                    tasks.push(tokio::spawn(async move {
+                        Self::download_chunked_file(
+                            client,
+                            &file,
+                            &file_path,
+                            1024 * 1024,  // 1MB chunks
+                            3,
+                            token,
+                            &endpoint,
+                            &model_id,
+                            name,
+                            is_dataset,
+                        ).await
+                    }));
                 } else {
-                    DownloadTask::SmallFile {
-                        file: file.clone(),
-                        path: file_path,
-                        group: name.to_string(),
-                        is_dataset,
-                    }
-                };
-
-                let client = client.clone();
-                let token = token.clone();
-                let endpoint = endpoint.to_string();
-                let model_id = model_id.to_string();
-                let pb = pb.clone();
-                let total_pb = total_pb.clone();
-
-                let handle = tokio::spawn(async move {
-                    let result = task.execute(&client, token, &endpoint, &model_id).await;
-                    if result.is_ok() {
-                        total_pb.inc(size);
-                    }
-                    pb.finish_and_clear();
-                    result
-                });
-                tasks.push(handle);
+                    tasks.push(tokio::spawn(async move {
+                        Self::download_small_file(
+                            client,
+                            &file,
+                            &file_path,
+                            token,
+                            &endpoint,
+                            &model_id,
+                            name,
+                            is_dataset,
+                        ).await
+                    }));
+                }
             }
         }
 
         // 等待所有下载完成
         for task in tasks {
-            task.await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Task failed: {}", e)))??;
+            task.await.map_err(|e| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to join download task: {}", e))
+            })??;
         }
 
-        total_pb.finish_with_message("✓ All files downloaded");
+        total_pb.finish_with_message("✓ All files downloaded successfully");
         Ok(())
     }
 } 
