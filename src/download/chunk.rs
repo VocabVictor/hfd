@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use indicatif::ProgressBar;
 use tokio::io::{AsyncWriteExt, AsyncSeekExt};
+use futures::StreamExt;
 
 #[allow(dead_code)]
 pub async fn download_file_with_chunks(
@@ -17,14 +18,42 @@ pub async fn download_file_with_chunks(
     pb: Arc<ProgressBar>,
     running: Arc<AtomicBool>,
 ) -> Result<(), String> {
-    // 创建临时文件
-    let _ = tokio::fs::File::create(&path)
-        .await
-        .map_err(|e| format!("Failed to create file: {}", e))?;
+    // 创建父目录
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
 
-    // 计算块数
+    // 获取已下载的大小
+    let downloaded_size = if let Ok(metadata) = tokio::fs::metadata(&path).await {
+        metadata.len()
+    } else {
+        0
+    };
+
+    // 如果文件已经完全下载，直接返回
+    if downloaded_size == total_size {
+        return Ok(());
+    }
+
+    // 创建或打开文件
+    let file = if downloaded_size > 0 {
+        tokio::fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .await
+            .map_err(|e| format!("Failed to open file: {}", e))?
+    } else {
+        tokio::fs::File::create(&path)
+            .await
+            .map_err(|e| format!("Failed to create file: {}", e))?
+    };
+
+    // 计算剩余需要下载的块
+    let start_chunk = downloaded_size / chunk_size as u64;
     let num_chunks = (total_size + chunk_size as u64 - 1) / chunk_size as u64;
-    let mut chunks: Vec<_> = (0..num_chunks).collect();
+    let mut chunks: Vec<_> = (start_chunk..num_chunks).collect();
 
     // 创建信号量来限制并发连接数
     let semaphore = Arc::new(tokio::sync::Semaphore::new(8));  // 使用配置的连接数

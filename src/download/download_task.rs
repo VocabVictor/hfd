@@ -10,6 +10,9 @@ use futures::StreamExt;
 use std::pin::Pin;
 use std::future::Future;
 use std::time::Duration;
+use tokio::fs;
+use std::io::SeekFrom;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 #[derive(Debug)]
 pub enum DownloadTask {
@@ -109,6 +112,11 @@ impl DownloadTask {
         is_dataset: bool,
         shared_pb: Option<Arc<ProgressBar>>,
     ) -> PyResult<()> {
+        // 检查文件是否需要下载
+        if !Self::should_download(path, file.size).await {
+            return Ok(());
+        }
+
         // 确保父目录存在
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent)
@@ -125,6 +133,12 @@ impl DownloadTask {
         let mut request = client.get(&url);
         if let Some(ref token) = token {
             request = request.header("Authorization", format!("Bearer {}", token));
+        }
+
+        // 获取已下载的大小
+        let downloaded_size = Self::get_downloaded_size(path).await;
+        if downloaded_size > 0 {
+            request = request.header("Range", format!("bytes={}-", downloaded_size));
         }
 
         // 创建进度条（如果没有共享进度条）
@@ -147,9 +161,23 @@ impl DownloadTask {
             .await
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to download file: {}", e)))?;
 
-        let mut output_file = tokio::fs::File::create(path)
-            .await
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create file: {}", e)))?;
+        let mut output_file = if downloaded_size > 0 {
+            let mut file = tokio::fs::OpenOptions::new()
+                .write(true)
+                .open(path)
+                .await
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to open file: {}", e)))?;
+            
+            file.seek(SeekFrom::Start(downloaded_size))
+                .await
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to seek: {}", e)))?;
+            
+            file
+        } else {
+            tokio::fs::File::create(path)
+                .await
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create file: {}", e)))?
+        };
 
         let mut stream = response.bytes_stream();
         while let Some(chunk) = stream.next().await {
@@ -180,6 +208,11 @@ impl DownloadTask {
         is_dataset: bool,
         shared_pb: Option<Arc<ProgressBar>>,
     ) -> PyResult<()> {
+        // 检查文件是否需要下载
+        if !Self::should_download(path, file.size).await {
+            return Ok(());
+        }
+
         let url = if is_dataset {
             format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
         } else {
@@ -246,10 +279,26 @@ impl DownloadTask {
             .await
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
 
-        // 计算文件夹总大小
-        let total_size: u64 = files.iter().filter_map(|f| f.size).sum();
+        // 计算需要下载的文件总大小
+        let mut total_size = 0;
+        let mut need_download_files = Vec::new();
 
-        // 为整个文件夹创建一个进度条
+        for file in files {
+            let file_path = folder_path.join(&file.rfilename);
+            if Self::should_download(&file_path, file.size).await {
+                if let Some(size) = file.size {
+                    total_size += size;
+                }
+                need_download_files.push(file);
+            }
+        }
+
+        // 如果没有需要下载的文件，直接返回
+        if need_download_files.is_empty() {
+            return Ok(());
+        }
+
+        // 创建共享进度条
         let pb = Arc::new(ProgressBar::new(total_size));
         pb.set_style(ProgressStyle::default_bar()
             .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {msg}")
@@ -258,68 +307,233 @@ impl DownloadTask {
         pb.set_message(format!("Downloading folder: {}", name));
         pb.enable_steady_tick(Duration::from_millis(100));
 
-        // 下载所有文件
-        let mut tasks = Vec::new();
-        let client = Arc::new(client.clone());
-        let name = name.to_string(); // 克隆 name 字符串
-
-        for file in files {
-            // 从完整路径中提取文件名
-            let file_name = file.rfilename.split('/').last().unwrap_or(&file.rfilename);
-            let file_path = folder_path.join(file_name);
-            
-            let file = file.clone();
-            let token = token.clone();
-            let endpoint = endpoint.to_string();
-            let model_id = model_id.to_string();
-            let client = client.clone();
-            let pb = pb.clone();
-            let name = name.clone(); // 克隆 name 用于每个任务
-
-            // 根据文件大小选择下载方式
+        // 下载需要的文件
+        for file in need_download_files {
+            let file_path = folder_path.join(&file.rfilename);
             if let Some(size) = file.size {
-                if size > 10 * 1024 * 1024 {  // 大于10MB的文件使用分块下载
-                    tasks.push(tokio::spawn(async move {
-                        Self::download_chunked_file(
-                            &client,
-                            &file,
-                            &file_path,
-                            1024 * 1024,  // 1MB chunks
-                            3,
-                            token,
-                            &endpoint,
-                            &model_id,
-                            &name,  // 使用克隆的 name
-                            is_dataset,
-                            Some(pb),
-                        ).await
-                    }));
+                if size > chunk_size as u64 {
+                    Self::download_chunked_file(
+                        client,
+                        file,
+                        &file_path,
+                        chunk_size,
+                        max_retries,
+                        token.clone(),
+                        endpoint,
+                        model_id,
+                        name,
+                        is_dataset,
+                        Some(pb.clone()),
+                    ).await?;
                 } else {
-                    tasks.push(tokio::spawn(async move {
-                        Self::download_small_file(
-                            &client,
-                            &file,
-                            &file_path,
-                            token,
-                            &endpoint,
-                            &model_id,
-                            &name,  // 使用克隆的 name
-                            is_dataset,
-                            Some(pb),
-                        ).await
-                    }));
+                    Self::download_small_file(
+                        client,
+                        file,
+                        &file_path,
+                        token.clone(),
+                        endpoint,
+                        model_id,
+                        name,
+                        is_dataset,
+                        Some(pb.clone()),
+                    ).await?;
                 }
+            } else {
+                Self::download_small_file(
+                    client,
+                    file,
+                    &file_path,
+                    token.clone(),
+                    endpoint,
+                    model_id,
+                    name,
+                    is_dataset,
+                    Some(pb.clone()),
+                ).await?;
             }
-        }
-
-        // 等待所有下载完成
-        for task in tasks {
-            task.await.map_err(|e| {
-                pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to join download task: {}", e))
-            })??;
         }
 
         pb.finish_with_message(format!("✓ Folder {} downloaded successfully", name));
         Ok(())
+    }
+
+    // 检查文件是否需要下载
+    async fn should_download(path: &PathBuf, expected_size: Option<u64>) -> bool {
+        if let Ok(metadata) = fs::metadata(path).await {
+            if let Some(size) = expected_size {
+                // 如果文件大小不匹配，需要重新下载
+                metadata.len() != size
+            } else {
+                // 如果没有期望的大小信息，但文件存在，则跳过
+                false
+            }
+        } else {
+            // 文件不存在，需要下载
+            true
+        }
+    }
+
+    // 获取已下载的文件大小，用于断点续传
+    async fn get_downloaded_size(path: &PathBuf) -> u64 {
+        if let Ok(metadata) = fs::metadata(path).await {
+            metadata.len()
+        } else {
+            0
+        }
+    }
+
+    pub async fn execute(
+        self,
+        client: &Client,
+        token: Option<String>,
+        endpoint: &str,
+        model_id: &str,
+    ) -> Result<(), String> {
+        match self {
+            Self::SmallFile { file, path, group, .. } => {
+                // 检查文件是否需要下载
+                if !Self::should_download(&path, file.size).await {
+                    return Ok(());
+                }
+
+                // 创建父目录
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent)
+                        .await
+                        .map_err(|e| format!("Failed to create directory: {}", e))?;
+                }
+
+                let mut request = client.get(&format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename));
+                if let Some(token) = token {
+                    request = request.header("Authorization", format!("Bearer {}", token));
+                }
+
+                let response = request
+                    .send()
+                    .await
+                    .map_err(|e| format!("Failed to download file: {}", e))?;
+
+                let mut file = tokio::fs::File::create(&path)
+                    .await
+                    .map_err(|e| format!("Failed to create file: {}", e))?;
+
+                let content = response
+                    .bytes()
+                    .await
+                    .map_err(|e| format!("Failed to read response: {}", e))?;
+
+                file.write_all(&content)
+                    .await
+                    .map_err(|e| format!("Failed to write file: {}", e))?;
+
+                Ok(())
+            }
+            Self::ChunkedFile { file, path, chunk_size, max_retries, group, .. } => {
+                // 检查文件是否需要下载
+                if !Self::should_download(&path, file.size).await {
+                    return Ok(());
+                }
+
+                // 创建父目录
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent)
+                        .await
+                        .map_err(|e| format!("Failed to create directory: {}", e))?;
+                }
+
+                // 获取已下载的大小
+                let downloaded_size = Self::get_downloaded_size(&path).await;
+                
+                let mut request = client.get(&format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename))
+                    .header("Range", format!("bytes={}-", downloaded_size));
+
+                if let Some(token) = token {
+                    request = request.header("Authorization", format!("Bearer {}", token));
+                }
+
+                let response = request
+                    .send()
+                    .await
+                    .map_err(|e| format!("Failed to download file: {}", e))?;
+
+                let mut file = if downloaded_size > 0 {
+                    let mut file = tokio::fs::OpenOptions::new()
+                        .write(true)
+                        .open(&path)
+                        .await
+                        .map_err(|e| format!("Failed to open file: {}", e))?;
+                    
+                    file.seek(SeekFrom::Start(downloaded_size))
+                        .await
+                        .map_err(|e| format!("Failed to seek: {}", e))?;
+                    
+                    file
+                } else {
+                    tokio::fs::File::create(&path)
+                        .await
+                        .map_err(|e| format!("Failed to create file: {}", e))?
+                };
+
+                let mut stream = response.bytes_stream();
+                while let Some(chunk) = stream.next().await {
+                    let chunk = chunk.map_err(|e| format!("Failed to read chunk: {}", e))?;
+                    file.write_all(&chunk)
+                        .await
+                        .map_err(|e| format!("Failed to write chunk: {}", e))?;
+                }
+
+                Ok(())
+            }
+            Self::Folder { name, files, base_path, is_dataset } => {
+                // 创建文件夹
+                let folder_path = base_path.join(&name);
+                fs::create_dir_all(&folder_path)
+                    .await
+                    .map_err(|e| format!("Failed to create directory: {}", e))?;
+
+                let mut total_size = 0;
+                let mut need_download_files = Vec::new();
+
+                // 预处理：计算需要下载的文件
+                for file in files {
+                    let file_path = folder_path.join(&file.rfilename);
+                    if Self::should_download(&file_path, file.size).await {
+                        if let Some(size) = file.size {
+                            total_size += size;
+                        }
+                        need_download_files.push((file, file_path));
+                    }
+                }
+
+                // 如果没有需要下载的文件，直接返回
+                if need_download_files.is_empty() {
+                    return Ok(());
+                }
+
+                // 创建进度条
+                let pb = ProgressBar::new(total_size);
+
+                // 下载需要的文件
+                for (file, file_path) in need_download_files {
+                    let task = if let Some(size) = file.size {
+                        if size > chunk_size as u64 {
+                            Self::large_file(file, file_path, chunk_size, max_retries, &name, is_dataset)
+                        } else {
+                            Self::single_file(file, file_path, &name, is_dataset)
+                        }
+                    } else {
+                        Self::single_file(file, file_path, &name, is_dataset)
+                    };
+
+                    task.execute(client, token.clone(), endpoint, model_id).await?;
+                    if let Some(size) = file.size {
+                        pb.inc(size);
+                    }
+                }
+
+                pb.finish_with_message("✓ Folder downloaded successfully");
+                Ok(())
+            }
+        }
     }
 } 
