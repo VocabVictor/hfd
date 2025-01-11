@@ -40,7 +40,7 @@ pub async fn download_file_with_chunks(
     };
 
     // 如果文件已经完全下载，直接返回
-    if downloaded_size == total_size {
+    if downloaded_size >= total_size {
         return Ok(());
     }
 

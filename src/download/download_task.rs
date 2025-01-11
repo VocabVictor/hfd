@@ -211,9 +211,12 @@ impl DownloadTask {
         is_dataset: bool,
         shared_pb: Option<Arc<ProgressBar>>,
     ) -> PyResult<()> {
-        // 检查文件是否需要下载
-        if !Self::should_download(path, file.size).await {
-            // 如果文件已经下载完成，直接返回，不显示任何消息
+        // 获取文件大小和已下载大小
+        let total_size = file.size.unwrap_or(0);
+        let downloaded_size = Self::get_downloaded_size(path).await;
+
+        // 如果文件已经完全下载或不需要下载，直接返回
+        if downloaded_size >= total_size || !Self::should_download(path, file.size).await {
             return Ok(());
         }
 
@@ -222,17 +225,6 @@ impl DownloadTask {
         } else {
             format!("{}/models/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
         };
-
-        // 使用已经获取的文件大小
-        let total_size = file.size.unwrap_or(0);
-
-        // 获取已下载的大小
-        let downloaded_size = Self::get_downloaded_size(path).await;
-        
-        // 如果文件已经完全下载，直接返回
-        if downloaded_size == total_size {
-            return Ok(());
-        }
 
         // 使用共享进度条或创建新的进度条
         let is_shared = shared_pb.is_some();
@@ -298,14 +290,12 @@ impl DownloadTask {
 
         for file in files {
             let file_path = folder_path.join(&file.rfilename);
-            if Self::should_download(&file_path, file.size).await {
-                if let Some(size) = file.size {
-                    // 获取已下载的大小
-                    let downloaded_size = Self::get_downloaded_size(&file_path).await;
-                    if downloaded_size < size {
-                        total_download_size += size - downloaded_size;
-                        need_download_files.push(file.clone());
-                    }
+            let downloaded_size = Self::get_downloaded_size(&file_path).await;
+            
+            if let Some(size) = file.size {
+                if downloaded_size < size && Self::should_download(&file_path, Some(size)).await {
+                    total_download_size += size - downloaded_size;
+                    need_download_files.push(file.clone());
                 }
             }
         }
