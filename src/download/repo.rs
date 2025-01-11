@@ -126,7 +126,7 @@ async fn resolve_file_info(
     let url = if is_dataset {
         format!("{}/datasets/{}/resolve/main/{}", endpoint, repo_id, rfilename)
     } else {
-        format!("{}/models/{}/resolve/main/{}", endpoint, repo_id, rfilename)
+        format!("{}/{}/resolve/main/{}", endpoint, repo_id, rfilename)
     };
 
     let mut request = client.head(&url);

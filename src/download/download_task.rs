@@ -129,7 +129,7 @@ impl DownloadTask {
         let url = if is_dataset {
             format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
         } else {
-            format!("{}/models/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+            format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
         };
 
         let mut request = client.get(&url);
