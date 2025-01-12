@@ -9,6 +9,8 @@ use tokio::fs;
 use crate::download::chunk::download_chunked_file;
 use crate::download::DownloadManager;
 use crate::INTERRUPT_FLAG;
+use std::sync::Arc;
+use crate::config::Config;
 
 pub async fn download_small_file(
     client: &Client,
@@ -247,4 +249,18 @@ async fn get_downloaded_size(path: &PathBuf) -> u64 {
     } else {
         0
     }
+}
+
+pub async fn download_file(
+    file: FileInfo,
+    config: Arc<Config>,
+) -> Result<(), String> {
+    let client = Client::new();
+    let download_manager = Arc::new(DownloadManager::new(config));
+    
+    let progress = download_manager.create_progress(file.rfilename.clone(), file.size.unwrap_or(0));
+    
+    download_chunked_file(&file, &client, download_manager.clone()).await?;
+    
+    Ok(())
 } 

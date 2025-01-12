@@ -3,6 +3,7 @@ use pyo3::prelude::*;
 use crate::download::repo;
 use tokio::runtime::Runtime;
 use glob;
+use std::sync::Arc;
 
 pub struct CliArgs {
     pub model_id: String,
@@ -110,122 +111,12 @@ Example:
     hfd meta-llama/Llama-2-7b --hf_username myuser --hf_token mytoken"#);
 }
 
-pub async fn download_file(
-    model_id: String,
-    local_dir: Option<String>,
-    include_patterns: Option<Vec<String>>,
-    exclude_patterns: Option<Vec<String>>,
-    token: Option<String>,
-) -> PyResult<String> {
-    let config = crate::config::Config::load()
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
-    let client = reqwest::Client::new();
-    let base_path = if let Some(dir) = local_dir {
-        std::path::PathBuf::from(dir)
-    } else {
-        let base = shellexpand::tilde(&config.local_dir_base).into_owned();
-        std::path::PathBuf::from(base)
-    };
-
-    // 创建 Auth 对象
-    let auth = crate::auth::Auth {
-        token: token.clone(),
-    };
-
-    // 获取仓库信息
-    let repo_info = repo::get_repo_info(
-        &client,
-        &config,
-        &model_id,
-        &auth,
-    ).await?;
-
-    // 根据仓库信息判断是否为数据集
-    let is_dataset = repo_info.is_dataset();
-
-    // 创建下载目录
-    let target_path = base_path.join(&model_id);
-    tokio::fs::create_dir_all(&target_path)
+pub async fn download_file(file: FileInfo, config: Config) -> PyResult<()> {
+    let config = Arc::new(config);
+    crate::download::download_task::download_file(file, config)
         .await
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
-
-    // 使用 repo_info 中的文件列表
-    let mut files = repo_info.files;
-
-    // 应用文件过滤
-    if let Some(patterns) = include_patterns {
-        files.retain(|file| {
-            patterns.iter().any(|pattern| {
-                glob::Pattern::new(pattern)
-                    .map(|p| p.matches(&file.rfilename))
-                    .unwrap_or(false)
-            })
-        });
-    }
-
-    if let Some(patterns) = exclude_patterns {
-        files.retain(|file| {
-            !patterns.iter().any(|pattern| {
-                glob::Pattern::new(pattern)
-                    .map(|p| p.matches(&file.rfilename))
-                    .unwrap_or(false)
-            })
-        });
-    }
-
-    // 检查是否为单文件下载
-    if files.len() == 1 && !files[0].rfilename.contains('/') {
-        // 单文件下载
-        let file = &files[0];
-        let file_path = target_path.join(&file.rfilename);
-        
-        // 创建下载管理器
-        let download_manager = crate::download::DownloadManager::new(
-            file.size.unwrap_or(0),
-            config.clone(),
-        );
-
-        // 根据文件大小选择下载方式
-        if file.size.unwrap_or(0) > config.parallel_download_threshold {
-            crate::download::chunk::download_chunked_file(
-                &client,
-                file,
-                &file_path,
-                config.chunk_size,
-                config.max_retries,
-                token,
-                &config.endpoint,
-                &model_id,
-                is_dataset,
-                &download_manager,
-            ).await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
-        } else {
-            crate::download::download_task::download_small_file(
-                &client,
-                file,
-                &file_path,
-                token,
-                &config.endpoint,
-                &model_id,
-                is_dataset,
-                &download_manager,
-            ).await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
-        }
-    } else {
-        // 文件夹下载
-        crate::download::download_task::download_folder(
-            client,
-            config.endpoint,
-            model_id,
-            target_path.clone(),
-            target_path.file_name().unwrap().to_string_lossy().to_string(),
-            files,
-            token,
-            is_dataset,
-        ).await?;
-    }
-
-    Ok(target_path.to_string_lossy().to_string())
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
+    Ok(())
 }
 
 pub fn run_cli() -> PyResult<()> {
