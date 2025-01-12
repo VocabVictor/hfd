@@ -92,6 +92,8 @@ pub async fn download_small_file(
             .progress_chars("#>-"));
         pb.set_message(format!("Downloading {}", file.rfilename));
         pb.enable_steady_tick(Duration::from_millis(100));
+        // 设置初始位置为已下载的大小
+        pb.set_position(downloaded_size);
         pb
     };
 
@@ -118,9 +120,8 @@ pub async fn download_small_file(
         .await
         .map_err(|e| format!("Failed to download file: {}", e))?;
 
-    // 先更新进度条，因为小文件下载和写入几乎是瞬间的
-    let total_downloaded = downloaded_size + bytes.len() as u64;
-    pb.set_position(total_downloaded);
+    // 更新进度条到完成状态
+    pb.set_position(total_size);
 
     // 写入文件
     output_file.write_all(&bytes)
