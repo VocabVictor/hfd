@@ -88,6 +88,5 @@ impl DownloadManager {
     }
 }
 
-pub use file::should_download;
-pub use download_task::{download_small_file, download_folder};
-pub use chunk::download_chunked_file; 
+// 只导出实际使用的内容
+pub use download_task::download_folder; 

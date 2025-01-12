@@ -47,6 +47,7 @@ pub async fn download_chunked_file(
 
     // 创建进度条
     let pb = download_manager.create_file_progress(file.rfilename.clone(), size).await;
+    let pb = Arc::new(pb);
 
     // 获取已下载的大小
     let downloaded_size = if let Ok(metadata) = tokio::fs::metadata(&path).await {
@@ -116,6 +117,7 @@ pub async fn download_chunked_file(
         let last_update = last_update.clone();
         let filename = file.rfilename.clone();
         let download_manager = download_manager.clone();
+        let pb = pb.clone();
 
         let task = tokio::spawn(async move {
             let _permit = permit;

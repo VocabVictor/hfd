@@ -72,7 +72,7 @@ pub async fn download_small_file(
     };
 
     // 创建进度条
-    let pb = download_manager.create_file_progress(file.rfilename.clone(), total_size).await;
+    let _pb = download_manager.create_file_progress(file.rfilename.clone(), total_size).await;
 
     let mut output_file = if downloaded_size > 0 {
         let mut file = tokio::fs::OpenOptions::new()
@@ -226,7 +226,7 @@ pub async fn download_folder(
             task.await.map_err(|e| format!("Task failed: {}", e))??;
         }
 
-        Ok(())
+        Ok::<_, String>(())  // 明确指定返回类型
     };
 
     // 使用 select! 等待任务完成或中断
