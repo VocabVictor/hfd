@@ -220,14 +220,18 @@ pub async fn download_file_with_chunks(
                     request = request.header("Authorization", format!("Bearer {}", token));
                 }
 
+                println!("Downloading chunk {} (bytes {}-{})", chunk_index, start, end - 1);
                 match request.send().await {
                     Ok(response) => {
                         // 检查响应状态码
+                        println!("Chunk {} received response with status: {}", chunk_index, response.status());
                         if !response.status().is_success() {
                             let status = response.status();
+                            let error_text = response.text().await.unwrap_or_default();
+                            println!("Chunk {} failed with status {} and error: {}", chunk_index, status, error_text);
                             retries += 1;
                             if retries >= max_retries {
-                                return Err(format!("Server error {} after {} retries", status, max_retries));
+                                return Err(format!("Server error {} after {} retries: {}", status, max_retries, error_text));
                             }
                             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                             continue;
@@ -237,6 +241,7 @@ pub async fn download_file_with_chunks(
                         let mut current_pos = start;
                         let mut chunk_downloaded = false;
 
+                        println!("Starting to read chunk {} stream", chunk_index);
                         while let Some(chunk_result) = stream.next().await {
                             // 检查中断标志
                             if INTERRUPT_FLAG.load(Ordering::SeqCst) {
@@ -300,10 +305,11 @@ pub async fn download_file_with_chunks(
                         let _ = tx.send(chunk_index).await;
                         return Ok(());
                     }
-                    Err(_) => {
+                    Err(e) => {
+                        println!("Chunk {} request failed with error: {}", chunk_index, e);
                         retries += 1;
                         if retries >= max_retries {
-                            return Err(format!("Failed to download chunk after {} retries", max_retries));
+                            return Err(format!("Failed to download chunk after {} retries: {}", max_retries, e));
                         }
                         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                     }
