@@ -26,10 +26,6 @@ micromamba run -n base maturin build --release --skip-auditwheel
 # 获取最新构建的 wheel 文件
 LATEST_WHEEL=$(ls -t target/wheels/*.whl | head -n1)
 
-# 上传到 TestPyPI
-echo "正在上传到 TestPyPI..."
-# micromamba run -n base python -m twine upload --verbose --repository testpypi target/wheels/*
-
 # 安装 wheel
 micromamba run -n base pip uninstall hfd -y
 micromamba run -n base pip install "$LATEST_WHEEL"

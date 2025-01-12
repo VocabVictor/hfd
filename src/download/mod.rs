@@ -31,7 +31,6 @@ pub struct DownloadManager {
 impl DownloadManager {
     pub fn new(total_size: u64, config: Config) -> Self {
         let multi_progress = Arc::new(MultiProgress::new());
-        println!("Creating download manager with {} concurrent downloads", config.concurrent_downloads);
         
         Self {
             multi_progress,
@@ -66,7 +65,6 @@ impl DownloadManager {
 
         let mut queue = self.download_queue.lock().await;
         queue.push_back(task);
-        println!("Added file to queue: {} (queue size: {})", filename, queue.len());
 
         file_progress.insert(filename.clone(), pb.clone());
         pb
@@ -80,7 +78,6 @@ impl DownloadManager {
     }
 
     pub async fn finish_file(&self, filename: &str) {
-        println!("Finishing download for file: {}", filename);
         let mut file_progress = self.file_progress.lock().await;
         let mut active_downloads = self.active_downloads.lock().await;
         
