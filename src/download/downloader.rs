@@ -100,14 +100,14 @@ impl ModelDownloader {
                         &self.client,
                         &file,
                         &file_path,
-                        self.config.chunk_size,  // 使用配置的块大小
-                        self.config.max_retries, // 使用配置的重试次数
+                        self.config.chunk_size,
+                        self.config.max_retries,
                         self.auth.token.clone(),
                         &self.config.endpoint,
                         model_id,
                         is_dataset,
-                        None,  // 不使用共享进度条
-                    ).await.map_err(|e| Self::to_py_err(e))?;
+                        None,
+                    ).await.map_err(Self::to_py_err)?;
                 } else {
                     download_small_file(
                         &self.client,
@@ -117,8 +117,8 @@ impl ModelDownloader {
                         &self.config.endpoint,
                         model_id,
                         is_dataset,
-                        None,  // 不使用共享进度条
-                    ).await.map_err(|e| Self::to_py_err(e))?;
+                        None,
+                    ).await.map_err(Self::to_py_err)?;
                 }
             } else {
                 download_small_file(
@@ -129,8 +129,8 @@ impl ModelDownloader {
                     &self.config.endpoint,
                     model_id,
                     is_dataset,
-                    None,  // 不使用共享进度条
-                ).await.map_err(|e| Self::to_py_err(e))?;
+                    None,
+                ).await.map_err(Self::to_py_err)?;
             }
         }
 
@@ -145,7 +145,7 @@ impl ModelDownloader {
                 files,
                 self.auth.token.clone(),
                 is_dataset,
-            ).await.map_err(|e| Self::to_py_err(e))?;
+            ).await.map_err(Self::to_py_err)?;
         }
 
         Ok(())
