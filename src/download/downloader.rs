@@ -22,7 +22,7 @@ impl ModelDownloader {
         token: Option<String>,
     ) -> PyResult<Self> {
         let mut config = Config::load()
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to load config: {}", e)))?;
+            .map_err(|e| PyRuntimeError::new_err(format!("Failed to load config: {}", e)))?;
 
         if let Some(include_patterns) = include_patterns {
             config.include_patterns = include_patterns;
@@ -41,10 +41,6 @@ impl ModelDownloader {
             auth,
             cache_dir,
         })
-    }
-
-    fn to_py_err(err: String) -> PyErr {
-        PyRuntimeError::new_err(err)
     }
 
     pub async fn download_files(
@@ -95,7 +91,7 @@ impl ModelDownloader {
             
             // 根据文件大小选择下载方式
             if let Some(size) = file.size {
-                if size > self.config.parallel_download_threshold {  // 使用配置的阈值
+                if size > self.config.parallel_download_threshold {
                     download_chunked_file(
                         &self.client,
                         &file,
@@ -107,7 +103,7 @@ impl ModelDownloader {
                         model_id,
                         is_dataset,
                         None,
-                    ).await.map_err(Self::to_py_err)?;
+                    ).await.map_err(|e| PyRuntimeError::new_err(e))?;
                 } else {
                     download_small_file(
                         &self.client,
@@ -118,7 +114,7 @@ impl ModelDownloader {
                         model_id,
                         is_dataset,
                         None,
-                    ).await.map_err(Self::to_py_err)?;
+                    ).await.map_err(|e| PyRuntimeError::new_err(e))?;
                 }
             } else {
                 download_small_file(
@@ -130,7 +126,7 @@ impl ModelDownloader {
                     model_id,
                     is_dataset,
                     None,
-                ).await.map_err(Self::to_py_err)?;
+                ).await.map_err(|e| PyRuntimeError::new_err(e))?;
             }
         }
 
@@ -145,7 +141,7 @@ impl ModelDownloader {
                 files,
                 self.auth.token.clone(),
                 is_dataset,
-            ).await.map_err(Self::to_py_err)?;
+            ).await?;
         }
 
         Ok(())
