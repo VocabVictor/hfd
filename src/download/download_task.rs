@@ -10,6 +10,7 @@ use std::io::SeekFrom;
 use futures::StreamExt;
 use std::time::Duration;
 use tokio::fs;
+use crate::download::chunk::download_file_with_chunks;
 
 const DEFAULT_CHUNK_SIZE: usize = 16 * 1024 * 1024; // 16MB
 const DEFAULT_MAX_RETRIES: usize = 3;
@@ -188,6 +189,15 @@ pub async fn download_folder(
 
     println!("Need to download {} files, total size: {} bytes", need_download_files.len(), total_download_size);
 
+    // 创建文件夹的总进度条
+    let total_pb = Arc::new(ProgressBar::new(total_download_size));
+    total_pb.set_style(ProgressStyle::default_bar()
+        .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
+        .unwrap()
+        .progress_chars("#>-"));
+    total_pb.set_message(format!("Downloading folder {}", folder_name));
+    total_pb.enable_steady_tick(Duration::from_millis(100));
+
     // 将文件分为大文件和小文件
     let (large_files, small_files): (Vec<_>, Vec<_>) = need_download_files
         .into_iter()
@@ -200,6 +210,7 @@ pub async fn download_folder(
     // 处理小文件 - 并发下载
     for file in small_files {
         if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
+            total_pb.abandon_with_message("Download interrupted by user");
             return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
         }
 
@@ -209,6 +220,7 @@ pub async fn download_folder(
         let permit = semaphore.clone();
         let endpoint = endpoint.clone();
         let model_id = model_id.clone();
+        let total_pb = total_pb.clone();
 
         tasks.push(tokio::spawn(async move {
             let _permit = permit.acquire().await.unwrap();
@@ -221,18 +233,19 @@ pub async fn download_folder(
                 &endpoint,
                 &model_id,
                 is_dataset,
-                None,
+                Some(total_pb),
             ).await;
             if result.is_ok() {
                 println!("Completed download of {}", file.rfilename);
             }
-            result
+            result.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))
         }));
     }
 
     // 处理大文件 - 每个文件内部使用分块并发下载
     for file in large_files {
         if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
+            total_pb.abandon_with_message("Download interrupted by user");
             return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
         }
 
@@ -242,6 +255,7 @@ pub async fn download_folder(
         let permit = semaphore.clone();
         let endpoint = endpoint.clone();
         let model_id = model_id.clone();
+        let total_pb = total_pb.clone();
 
         tasks.push(tokio::spawn(async move {
             let _permit = permit.acquire().await.unwrap();
@@ -256,24 +270,25 @@ pub async fn download_folder(
                 &endpoint,
                 &model_id,
                 is_dataset,
-                None,
+                Some(total_pb),
             ).await;
             if result.is_ok() {
                 println!("Completed download of {}", file.rfilename);
             }
-            result
+            result.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))
         }));
     }
 
     // 等待所有任务完成
     for task in tasks {
         if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
+            total_pb.abandon_with_message("Download interrupted by user");
             return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
         }
-        task.await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Task failed: {}", e)))??;
+        task.await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Task failed: {}", e)))?;
     }
 
-    println!("✓ Downloaded folder {}", folder_name);
+    total_pb.finish_with_message(format!("✓ Downloaded folder {}", folder_name));
     Ok(())
 }
 
