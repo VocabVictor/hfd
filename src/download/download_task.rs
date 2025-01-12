@@ -33,7 +33,7 @@ pub async fn download_small_file(
         if let Ok(metadata) = tokio::fs::metadata(path).await {
             if metadata.len() >= size {
                 if let Some(pb) = parent_pb {
-                    pb.inc(size);
+                    pb.set_position(pb.position() + size);
                 }
                 return Ok(());
             }
@@ -96,7 +96,7 @@ pub async fn download_small_file(
         let chunk = chunk_result.map_err(|e| format!("Failed to download chunk: {}", e))?;
         output_file.write_all(&chunk).await.map_err(|e| format!("Failed to write chunk: {}", e))?;
         if let Some(pb) = &parent_pb {
-            pb.inc(chunk.len() as u64);
+            pb.set_position(pb.position() + chunk.len() as u64);
         }
     }
 
@@ -124,7 +124,7 @@ pub async fn download_chunked_file(
     if let Ok(metadata) = tokio::fs::metadata(path).await {
         if metadata.len() >= size {
             if let Some(pb) = parent_pb {
-                pb.inc(size);
+                pb.set_position(pb.position() + size);
             }
             return Ok(());
         }
@@ -195,7 +195,6 @@ pub async fn download_folder(
 
     let mut need_download_files = Vec::new();
     let mut total_download_size = 0;
-    let mut downloaded_size = 0;
 
     // 检查需要下载的文件
     let mut total_files = files.len();
@@ -209,8 +208,7 @@ pub async fn download_folder(
         if let Some(size) = file.size {
             let file_downloaded_size = get_downloaded_size(&file_path).await;
             if file_downloaded_size < size {
-                total_download_size += size;
-                downloaded_size += file_downloaded_size;
+                total_download_size += size - file_downloaded_size;  // 只计算还需要下载的大小
                 need_download_files.push(file.clone());
             } else {
                 downloaded_files += 1;
@@ -235,11 +233,6 @@ pub async fn download_folder(
         .progress_chars("#>-"));
     total_pb.set_message(format!("Downloading folder {}", folder_name));
     total_pb.enable_steady_tick(Duration::from_millis(100));
-    
-    // 设置已下载的大小
-    if downloaded_size > 0 {
-        total_pb.set_position(downloaded_size);
-    }
 
     // 将文件分为大文件和小文件
     let (large_files, small_files): (Vec<_>, Vec<_>) = need_download_files
