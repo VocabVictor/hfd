@@ -246,7 +246,7 @@ pub async fn download_file(
     let client = Client::new();
     let download_manager = Arc::new(DownloadManager::new(config));
     
-    let progress = download_manager.create_progress(file.rfilename.clone(), file.size.unwrap_or(0)).await;
+    let _progress = download_manager.create_progress(file.rfilename.clone(), file.size.unwrap_or(0)).await;
     
     download_chunked_file(&file, &client, download_manager.clone()).await?;
     

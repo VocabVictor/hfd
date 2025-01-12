@@ -1,10 +1,9 @@
-use std::path::PathBuf;
 use std::fs;
 use std::sync::Arc;
 use std::time::{Instant, Duration};
 use tokio::sync::Semaphore;
 use tokio::fs::OpenOptions;
-use tokio::io::{AsyncWriteExt, AsyncSeekExt};
+use tokio::io::AsyncWriteExt;
 use futures::StreamExt;
 use reqwest::Client;
 use crate::download::DownloadManager;
@@ -16,7 +15,7 @@ pub async fn download_chunked_file(
     client: &Client,
     download_manager: Arc<DownloadManager>,
 ) -> Result<(), String> {
-    let downloaded_size = if let Ok(metadata) = fs::metadata(&file.rfilename) {
+    let _downloaded_size = if let Ok(metadata) = fs::metadata(&file.rfilename) {
         metadata.len()
     } else {
         0
@@ -60,7 +59,7 @@ pub async fn download_chunked_file(
                 .await
                 .map_err(|e| e.to_string())?;
 
-            let mut bytes_written = 0;
+            let mut _bytes_written = 0;
             let mut last_update = Instant::now();
             let mut stream = response.bytes_stream();
 
@@ -73,7 +72,7 @@ pub async fn download_chunked_file(
                 let bytes_len = chunk.len() as u64;
 
                 file.write_all(&chunk).await.map_err(|e| e.to_string())?;
-                bytes_written += bytes_len;
+                _bytes_written += bytes_len;
 
                 let now = Instant::now();
                 if now.duration_since(last_update) >= Duration::from_secs(1) {

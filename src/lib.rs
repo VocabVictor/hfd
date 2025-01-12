@@ -23,12 +23,12 @@ pub fn setup_interrupt_handler() {
 }
 
 #[pyfunction]
-pub fn download(
+pub fn download_model(
     model_id: String,
     local_dir: Option<String>,
-    include_patterns: Option<Vec<String>>,
-    exclude_patterns: Option<Vec<String>>,
-    hf_token: Option<String>,
+    _include_patterns: Option<Vec<String>>,
+    _exclude_patterns: Option<Vec<String>>,
+    _hf_token: Option<String>,
 ) -> PyResult<String> {
     let rt = Runtime::new()
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create runtime: {}", e)))?;
@@ -51,7 +51,7 @@ fn main() -> PyResult<()> {
 
 #[pymodule]
 fn hfd(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(download, m)?)?;
+    m.add_function(wrap_pyfunction!(download_model, m)?)?;
     m.add_function(wrap_pyfunction!(main, m)?)?;
     Ok(())
 } 
