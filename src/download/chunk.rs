@@ -123,8 +123,14 @@ pub async fn download_file_with_chunks(
                             continue;
                         }
 
+                        // 检查Content-Length头部
+                        if let Some(content_length) = response.content_length() {
+                            println!("Chunk {} content length: {}", chunk_index, content_length);
+                        }
+
                         let mut stream = response.bytes_stream();
                         let mut current_pos = start;
+                        let mut chunk_downloaded = false;
 
                         while let Some(chunk_result) = stream.next().await {
                             // 检查中断标志
@@ -134,6 +140,7 @@ pub async fn download_file_with_chunks(
 
                             match chunk_result {
                                 Ok(chunk) => {
+                                    chunk_downloaded = true;
                                     let chunk_len = chunk.len() as u64;
                                     let mut file = file.lock().await;
                                     
@@ -164,14 +171,26 @@ pub async fn download_file_with_chunks(
                                         *last = now;
                                     }
                                     
-                                    // 更新进度条，但不显示完成消息
+                                    // 更新进度条
                                     pb.inc(chunk_len);
+                                    println!("Updated progress for chunk {}: {} bytes", chunk_index, chunk_len);
                                 }
                                 Err(e) => {
                                     return Err(format!("Failed to download chunk: {}", e));
                                 }
                             }
                         }
+
+                        if !chunk_downloaded {
+                            println!("Warning: No data received for chunk {}", chunk_index);
+                            retries += 1;
+                            if retries >= max_retries {
+                                return Err(format!("No data received for chunk {} after {} retries", chunk_index, max_retries));
+                            }
+                            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                            continue;
+                        }
+
                         return Ok(());
                     }
                     Err(_) => {
