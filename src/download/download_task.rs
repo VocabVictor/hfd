@@ -6,8 +6,9 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use std::io::SeekFrom;
 use std::time::Duration;
 use tokio::fs;
-use crate::download::chunk::{download_chunked_file};
+use crate::download::chunk::download_chunked_file;
 use crate::download::DownloadManager;
+use crate::INTERRUPT_FLAG;
 
 pub async fn download_small_file(
     client: &Client,
@@ -19,8 +20,6 @@ pub async fn download_small_file(
     is_dataset: bool,
     download_manager: &DownloadManager,
 ) -> Result<(), String> {
-    use crate::INTERRUPT_FLAG;
-
     // 检查文件是否已经下载
     if let Some(size) = file.size {
         if let Ok(metadata) = tokio::fs::metadata(path).await {
@@ -124,7 +123,6 @@ pub async fn download_folder(
     token: Option<String>,
     is_dataset: bool,
 ) -> PyResult<()> {
-    use crate::INTERRUPT_FLAG;
     use tokio::select;
 
     let folder_name = name.clone();

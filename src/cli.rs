@@ -1,14 +1,5 @@
 use std::env;
 use pyo3::prelude::*;
-use crate::download::download_task::download_folder;
-use crate::config::Config;
-use crate::types::FileInfo;
-use crate::download::repo::get_repo_files;
-use clap::{Parser, Subcommand};
-use pyo3::prelude::*;
-use reqwest::Client;
-use std::path::PathBuf;
-use crate::download::downloader::ModelDownloader;
 use crate::download::repo;
 use tokio::runtime::Runtime;
 
@@ -125,31 +116,56 @@ pub async fn download_file(
     exclude_patterns: Option<Vec<String>>,
     token: Option<String>,
 ) -> PyResult<String> {
-    let downloader = ModelDownloader::new(
-        local_dir,
-        include_patterns,
-        exclude_patterns,
-        token,
-    )?;
+    let config = crate::config::Config::load()?;
+    let client = reqwest::Client::new();
+    let base_path = if let Some(dir) = local_dir {
+        std::path::PathBuf::from(dir)
+    } else {
+        let base = shellexpand::tilde(&config.local_dir_base).into_owned();
+        std::path::PathBuf::from(base)
+    };
 
     // 获取仓库信息
     let repo_info = repo::get_repo_info(
-        &downloader.client,
-        &downloader.config,
+        &client,
+        &config,
         &model_id,
-        &downloader.auth,
+        &token,
     ).await?;
 
     // 根据仓库信息判断是否为数据集
     let is_dataset = repo_info.is_dataset();
 
     // 创建下载目录
-    let base_path = std::path::PathBuf::from(&downloader.cache_dir).join(&model_id);
-    
-    // 下载文件，传入已获取的仓库信息
-    downloader.download_files(&model_id, &base_path, is_dataset, repo_info).await?;
+    let target_path = base_path.join(&model_id);
+    tokio::fs::create_dir_all(&target_path)
+        .await
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
 
-    Ok(base_path.to_string_lossy().to_string())
+    // 获取需要下载的文件列表
+    let files = repo::get_repo_files(
+        &client,
+        &config,
+        &model_id,
+        &token,
+        is_dataset,
+        include_patterns,
+        exclude_patterns,
+    ).await?;
+
+    // 下载文件
+    crate::download::download_task::download_folder(
+        client,
+        config.endpoint,
+        model_id,
+        target_path.clone(),
+        target_path.file_name().unwrap().to_string_lossy().to_string(),
+        files,
+        token,
+        is_dataset,
+    ).await?;
+
+    Ok(target_path.to_string_lossy().to_string())
 }
 
 pub fn run_cli() -> PyResult<()> {

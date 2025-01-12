@@ -86,7 +86,4 @@ impl DownloadManager {
     pub fn get_config(&self) -> Arc<Config> {
         self.config.clone()
     }
-}
-
-// 只导出实际使用的内容
-pub use download_task::download_folder; 
+} 
