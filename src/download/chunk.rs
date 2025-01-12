@@ -159,12 +159,14 @@ pub async fn download_file_with_chunks(
                                     // 更新位置
                                     current_pos += chunk_len;
 
-                                    // 更新总进度和下载速度统计
+                                    // 立即更新总进度和进度条
                                     let new_total = total_downloaded.fetch_add(chunk_len, Ordering::Relaxed) + chunk_len;
+                                    pb.set_position(new_total);
+
+                                    // 更新下载速度统计（每100ms更新一次）
                                     bytes_downloaded.fetch_add(chunk_len, Ordering::Relaxed);
-                                    
-                                    let mut last = last_update.lock().unwrap();
                                     let now = std::time::Instant::now();
+                                    let mut last = last_update.lock().unwrap();
                                     if now.duration_since(*last) >= Duration::from_millis(100) {
                                         let bytes = bytes_downloaded.swap(0, Ordering::Relaxed);
                                         let elapsed = now.duration_since(*last).as_secs_f64();
@@ -173,9 +175,6 @@ pub async fn download_file_with_chunks(
                                             pb.set_message(format!("{:.2} MiB/s", speed / 1024.0 / 1024.0));
                                         }
                                         *last = now;
-                                        
-                                        // 更新进度条位置
-                                        pb.set_position(new_total);
                                     }
                                     
                                     println!("Updated progress: {}/{} bytes", new_total, total_size);
