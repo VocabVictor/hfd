@@ -108,26 +108,18 @@ pub async fn download_file_with_chunks(
                     request = request.header("Authorization", format!("Bearer {}", token));
                 }
 
-                println!("Sending request for chunk {}, range: {}-{}", chunk_index, start, end - 1);
                 match request.send().await {
                     Ok(response) => {
                         // 检查响应状态码
                         if !response.status().is_success() {
                             let status = response.status();
-                            println!("Error: Server returned status code: {}", status);
                             let error_text = response.text().await.unwrap_or_default();
-                            println!("Error response: {}", error_text);
                             retries += 1;
                             if retries >= max_retries {
                                 return Err(format!("Server error {} after {} retries", status, max_retries));
                             }
                             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                             continue;
-                        }
-
-                        // 检查Content-Length头部
-                        if let Some(content_length) = response.content_length() {
-                            println!("Chunk {} content length: {}", chunk_index, content_length);
                         }
 
                         let mut stream = response.bytes_stream();
@@ -184,7 +176,6 @@ pub async fn download_file_with_chunks(
                         }
 
                         if !chunk_downloaded {
-                            println!("Warning: No data received for chunk {}", chunk_index);
                             retries += 1;
                             if retries >= max_retries {
                                 return Err(format!("No data received for chunk {} after {} retries", chunk_index, max_retries));
