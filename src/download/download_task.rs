@@ -197,6 +197,8 @@ pub async fn download_folder(
     let mut total_download_size = 0;
 
     // 检查需要下载的文件
+    let mut total_files = files.len();
+    let mut downloaded_files = 0;
     for file in &files {
         if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
             return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
@@ -208,16 +210,20 @@ pub async fn download_folder(
             if downloaded_size < size {
                 total_download_size += size - downloaded_size;
                 need_download_files.push(file.clone());
+            } else {
+                downloaded_files += 1;
+                println!("File {} is already downloaded.", file.rfilename);
             }
         }
     }
 
     if need_download_files.is_empty() {
-        println!("All files in folder {} are already downloaded.", folder_name);
+        println!("All {} files in folder {} are already downloaded.", total_files, folder_name);
         return Ok(());
     }
 
-    println!("Downloading {} files, total size: {} bytes", need_download_files.len(), total_download_size);
+    println!("Found {} already downloaded files, downloading remaining {} files, total size: {} bytes", 
+             downloaded_files, need_download_files.len(), total_download_size);
 
     // 创建文件夹的总进度条
     let total_pb = Arc::new(ProgressBar::new(total_download_size));
@@ -338,45 +344,5 @@ async fn get_downloaded_size(path: &PathBuf) -> u64 {
         }
     } else {
         0
-    }
-}
-
-// 单文件下载入口
-pub async fn download_single_file(
-    client: &Client,
-    file: &FileInfo,
-    path: &PathBuf,
-    token: Option<String>,
-    endpoint: &str,
-    model_id: &str,
-    is_dataset: bool,
-) -> Result<(), String> {
-    // 如果是大文件，使用分块并发下载
-    if file.size.map_or(false, |size| size > DEFAULT_CHUNK_SIZE as u64) {
-        download_chunked_file(
-            client,
-            file,
-            path,
-            DEFAULT_CHUNK_SIZE,
-            DEFAULT_MAX_RETRIES,
-            token,
-            endpoint,
-            model_id,
-            is_dataset,
-            None,
-            &Config::default(),
-        ).await
-    } else {
-        // 小文件直接下载
-        download_small_file(
-            client,
-            file,
-            path,
-            token,
-            endpoint,
-            model_id,
-            is_dataset,
-            None,
-        ).await
     }
 } 
