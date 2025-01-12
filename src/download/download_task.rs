@@ -35,6 +35,7 @@ pub async fn download_small_file(
                 if let Some(pb) = parent_pb {
                     pb.set_position(pb.position() + size);
                 }
+                println!("File {} is already downloaded.", file.rfilename);
                 return Ok(());
             }
         }
@@ -59,9 +60,11 @@ pub async fn download_small_file(
     }
 
     // 获取已下载的大小
+    let mut downloaded_size = 0;
     if let Ok(metadata) = tokio::fs::metadata(path).await {
         if metadata.len() > 0 {
-            request = request.header("Range", format!("bytes={}-", metadata.len()));
+            downloaded_size = metadata.len();
+            request = request.header("Range", format!("bytes={}-", downloaded_size));
         }
     }
 
@@ -69,14 +72,40 @@ pub async fn download_small_file(
         .await
         .map_err(|e| format!("Failed to download file: {}", e))?;
 
-    let mut output_file = if let Ok(metadata) = tokio::fs::metadata(path).await {
+    // 获取文件总大小
+    let total_size = if let Some(size) = file.size {
+        size
+    } else if let Some(content_length) = response.content_length() {
+        content_length + downloaded_size
+    } else {
+        return Err("Could not determine file size".to_string());
+    };
+
+    // 如果没有父进度条，创建一个新的进度条
+    let pb = if let Some(pb) = parent_pb {
+        pb
+    } else {
+        let pb = Arc::new(ProgressBar::new(total_size));
+        pb.set_style(ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
+            .unwrap()
+            .progress_chars("#>-"));
+        pb.set_message(format!("Downloading {}", file.rfilename));
+        pb.enable_steady_tick(Duration::from_millis(100));
+        if downloaded_size > 0 {
+            pb.set_position(downloaded_size);
+        }
+        pb
+    };
+
+    let mut output_file = if downloaded_size > 0 {
         let mut file = tokio::fs::OpenOptions::new()
             .write(true)
             .open(path)
             .await
             .map_err(|e| format!("Failed to open file: {}", e))?;
         
-        file.seek(SeekFrom::Start(metadata.len()))
+        file.seek(SeekFrom::Start(downloaded_size))
             .await
             .map_err(|e| format!("Failed to seek: {}", e))?;
         
@@ -95,9 +124,11 @@ pub async fn download_small_file(
 
         let chunk = chunk_result.map_err(|e| format!("Failed to download chunk: {}", e))?;
         output_file.write_all(&chunk).await.map_err(|e| format!("Failed to write chunk: {}", e))?;
-        if let Some(pb) = &parent_pb {
-            pb.set_position(pb.position() + chunk.len() as u64);
-        }
+        pb.set_position(pb.position() + chunk.len() as u64);
+    }
+
+    if parent_pb.is_none() {
+        pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
     }
 
     Ok(())
@@ -126,6 +157,7 @@ pub async fn download_chunked_file(
             if let Some(pb) = parent_pb {
                 pb.set_position(pb.position() + size);
             }
+            println!("File {} is already downloaded.", file.rfilename);
             return Ok(());
         }
     }
@@ -154,6 +186,20 @@ pub async fn download_chunked_file(
         running_clone.store(false, std::sync::atomic::Ordering::SeqCst);
     });
 
+    // 如果没有父进度条，创建一个新的进度条
+    let pb = if let Some(pb) = parent_pb {
+        pb
+    } else {
+        let pb = Arc::new(ProgressBar::new(size));
+        pb.set_style(ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
+            .unwrap()
+            .progress_chars("#>-"));
+        pb.set_message(format!("Downloading {}", file.rfilename));
+        pb.enable_steady_tick(Duration::from_millis(100));
+        pb
+    };
+
     let result = download_file_with_chunks(
         client,
         url,
@@ -162,13 +208,21 @@ pub async fn download_chunked_file(
         chunk_size,
         max_retries,
         token,
-        parent_pb.clone().unwrap_or_else(|| Arc::new(ProgressBar::hidden())),
+        pb.clone(),
         running.clone(),
         config,
     ).await;
 
     if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
         return Err("Download interrupted by user".to_string());
+    }
+
+    if parent_pb.is_none() {
+        if result.is_ok() {
+            pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
+        } else {
+            pb.abandon_with_message(format!("Failed to download {}", file.rfilename));
+        }
     }
 
     result
