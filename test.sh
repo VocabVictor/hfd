@@ -30,10 +30,6 @@ LATEST_WHEEL=$(ls -t target/wheels/*.whl | head -n1)
 echo "正在上传到 TestPyPI..."
 # micromamba run -n base python -m twine upload --verbose --repository testpypi target/wheels/*
 
-echo "构建和上传完成！"
-echo "你可以使用以下命令安装："
-echo "pip install --index-url https://pypi.org/simple/ hfd==${CURRENT_VERSION}"
-
 # 安装 wheel
 micromamba run -n base pip uninstall hfd -y
 micromamba run -n base pip install "$LATEST_WHEEL"

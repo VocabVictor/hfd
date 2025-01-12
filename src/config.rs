@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::fs;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default = "default_endpoint")]
     pub endpoint: String,
@@ -34,6 +34,28 @@ pub struct Config {
     pub hf_username: Option<String>,
     #[serde(default)]
     pub hf_token: Option<String>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            endpoint: default_endpoint(),
+            use_local_dir: false,
+            local_dir_base: default_model_dir_base(),
+            dataset_dir_base: default_dataset_dir_base(),
+            concurrent_downloads: default_concurrent_downloads(),
+            max_download_speed: None,
+            connections_per_download: default_connections_per_download(),
+            parallel_download_threshold: default_parallel_download_threshold(),
+            buffer_size: default_buffer_size(),
+            chunk_size: default_chunk_size(),
+            max_retries: default_max_retries(),
+            include_patterns: Vec::new(),
+            exclude_patterns: Vec::new(),
+            hf_username: None,
+            hf_token: None,
+        }
+    }
 }
 
 fn default_endpoint() -> String {
