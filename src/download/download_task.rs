@@ -105,7 +105,7 @@ pub async fn download_small_file(
     // 更新进度
     let bytes_len = bytes.len() as u64;
     if bytes_len > 0 {
-        download_manager.create_progress(&file.rfilename, bytes_len).await;
+        download_manager.create_progress(file.rfilename.clone(), bytes_len).await;
     }
 
     // 完成下载
@@ -119,14 +119,13 @@ pub async fn download_folder(
     endpoint: String,
     model_id: String,
     base_path: PathBuf,
-    name: String,
+    _name: String,
     files: Vec<FileInfo>,
     token: Option<String>,
     is_dataset: bool,
 ) -> PyResult<()> {
     use tokio::select;
 
-    let folder_name = name.clone();
     let folder_path = base_path;
     tokio::fs::create_dir_all(&folder_path)
         .await
@@ -136,7 +135,6 @@ pub async fn download_folder(
     let mut total_download_size = 0;
 
     // 检查需要下载的文件
-    let total_files = files.len();
     let mut downloaded_files = 0;
     for file in &files {
         if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {

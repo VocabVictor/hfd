@@ -22,7 +22,7 @@ pub async fn download_chunked_file(
         0
     };
 
-    let chunk_size = download_manager.get_config().chunk_size;
+    let chunk_size = download_manager.get_config().chunk_size as u64;
     let total_size = file.size.ok_or_else(|| "File size is required".to_string())?;
     let total_chunks = (total_size + chunk_size - 1) / chunk_size;
 

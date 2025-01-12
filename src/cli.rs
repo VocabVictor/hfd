@@ -6,6 +6,7 @@ use glob;
 use std::sync::Arc;
 use crate::types::FileInfo;
 use crate::config::Config;
+use crate::auth::Auth;
 
 pub struct CliArgs {
     pub model_id: String,
@@ -118,11 +119,12 @@ pub async fn download_file(model_id: String, config: Config) -> PyResult<String>
     
     // 获取仓库信息
     let client = reqwest::Client::new();
+    let auth = Auth { token: None }; // 创建一个空的Auth实例
     let repo_info = repo::get_repo_info(
         &client,
         &config,
         &model_id,
-        &None, // 暂时不使用token
+        &auth,
     ).await?;
 
     // 创建下载目录
