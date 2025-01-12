@@ -120,13 +120,13 @@ pub async fn download_small_file(
         .await
         .map_err(|e| format!("Failed to download file: {}", e))?;
 
-    // 更新进度条到完成状态
-    pb.set_position(total_size);
-
     // 写入文件
     output_file.write_all(&bytes)
         .await
         .map_err(|e| format!("Failed to write file: {}", e))?;
+
+    // 更新进度条到完成状态（移到文件写入之后）
+    pb.set_position(total_size);
 
     if parent_pb.is_none() {
         println!("✓ Downloaded {}", file.rfilename);
@@ -388,7 +388,6 @@ pub async fn download_folder(
                 }
             },
             _ = interrupt_task => {
-                total_pb.abandon_with_message("Download interrupted by user");
                 Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"))
             }
         }
