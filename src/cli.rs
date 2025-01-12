@@ -173,17 +173,57 @@ pub async fn download_file(
         });
     }
 
-    // 下载文件
-    crate::download::download_task::download_folder(
-        client,
-        config.endpoint,
-        model_id,
-        target_path.clone(),
-        target_path.file_name().unwrap().to_string_lossy().to_string(),
-        files,
-        token,
-        is_dataset,
-    ).await?;
+    // 检查是否为单文件下载
+    if files.len() == 1 && !files[0].rfilename.contains('/') {
+        // 单文件下载
+        let file = &files[0];
+        let file_path = target_path.join(&file.rfilename);
+        
+        // 创建下载管理器
+        let download_manager = crate::download::DownloadManager::new(
+            file.size.unwrap_or(0),
+            config.clone(),
+        );
+
+        // 根据文件大小选择下载方式
+        if file.size.unwrap_or(0) > config.parallel_download_threshold {
+            crate::download::chunk::download_chunked_file(
+                &client,
+                file,
+                &file_path,
+                config.chunk_size,
+                config.max_retries,
+                token,
+                &config.endpoint,
+                &model_id,
+                is_dataset,
+                &download_manager,
+            ).await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
+        } else {
+            crate::download::download_task::download_small_file(
+                &client,
+                file,
+                &file_path,
+                token,
+                &config.endpoint,
+                &model_id,
+                is_dataset,
+                &download_manager,
+            ).await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
+        }
+    } else {
+        // 文件夹下载
+        crate::download::download_task::download_folder(
+            client,
+            config.endpoint,
+            model_id,
+            target_path.clone(),
+            target_path.file_name().unwrap().to_string_lossy().to_string(),
+            files,
+            token,
+            is_dataset,
+        ).await?;
+    }
 
     Ok(target_path.to_string_lossy().to_string())
 }
