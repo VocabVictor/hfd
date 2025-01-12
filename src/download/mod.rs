@@ -42,6 +42,15 @@ impl DownloadManager {
         }
     }
 
+    pub async fn get_progress(&self, filename: &str) -> Arc<ProgressBar> {
+        let file_progress = self.file_progress.lock().await;
+        if let Some(pb) = file_progress.get(filename) {
+            pb.clone()
+        } else {
+            panic!("Progress bar not found for file: {}", filename);
+        }
+    }
+
     pub async fn create_file_progress(&self, filename: String, size: u64) -> Arc<ProgressBar> {
         let mut file_progress = self.file_progress.lock().await;
         if let Some(pb) = file_progress.get(&filename) {
@@ -53,7 +62,7 @@ impl DownloadManager {
             .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
             .unwrap()
             .progress_chars("#>-"));
-        pb.set_message(format!("Waiting to download {}", filename));
+        pb.set_message(format!("Downloading {}", filename));
         pb.enable_steady_tick(Duration::from_millis(100));
 
         // 创建下载任务并加入队列
@@ -74,6 +83,7 @@ impl DownloadManager {
         let file_progress = self.file_progress.lock().await;
         if let Some(pb) = file_progress.get(filename) {
             pb.inc(bytes);
+            pb.set_message(format!("Downloading {}", filename));
         }
     }
 
@@ -83,6 +93,10 @@ impl DownloadManager {
         
         if let Some(pb) = file_progress.remove(filename) {
             pb.finish_with_message(format!("✓ Downloaded {}", filename));
+            pb.set_style(ProgressStyle::default_bar()
+                .template("[{elapsed_precise}] [{bar:40.green/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
+                .unwrap()
+                .progress_chars("#>-"));
         }
         
         active_downloads.remove(filename);

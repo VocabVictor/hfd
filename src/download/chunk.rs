@@ -24,11 +24,16 @@ pub async fn download_chunked_file(
 ) -> Result<(), String> {
     let size = file.size.ok_or("File size is required for chunked download")?;
 
-    // 检查文件是否已经下载
-    if let Ok(metadata) = tokio::fs::metadata(path).await {
-        if metadata.len() >= size {
-            return Ok(());
-        }
+    // 获取已下载的大小
+    let downloaded_size = if let Ok(metadata) = tokio::fs::metadata(&path).await {
+        metadata.len()
+    } else {
+        0
+    };
+
+    // 检查文件是否已经完全下载
+    if downloaded_size >= size {
+        return Ok(());
     }
 
     // 确保父目录存在
@@ -44,14 +49,11 @@ pub async fn download_chunked_file(
         format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
     };
 
-    // 创建进度条
-    let pb = download_manager.create_file_progress(file.rfilename.clone(), size).await;
-
-    // 获取已下载的大小
-    let downloaded_size = if let Ok(metadata) = tokio::fs::metadata(&path).await {
-        metadata.len()
+    // 创建进度条 - 只在文件开始下载时创建一次
+    let pb = if downloaded_size == 0 {
+        download_manager.create_file_progress(file.rfilename.clone(), size).await
     } else {
-        0
+        download_manager.get_progress(&file.rfilename).await
     };
 
     // 如果文件已经完全下载，直接返回
@@ -169,19 +171,20 @@ pub async fn download_chunked_file(
                                             
                                             current_pos += chunk_len;
 
-                                            // 更新进度
+                                            // 更新进度 - 使用原子操作更新
+                                            let chunk_len = chunk.len() as u64;
                                             download_manager.update_progress(&filename, chunk_len).await;
 
-                                            // 更新下载速度统计
+                                            // 更新下载速度统计 - 使用原子操作
                                             bytes_downloaded.fetch_add(chunk_len, Ordering::Relaxed);
                                             let now = std::time::Instant::now();
                                             let mut last = last_update.lock().unwrap();
-                                            if now.duration_since(*last) >= Duration::from_millis(100) {
+                                            if now.duration_since(*last) >= Duration::from_millis(100) {  // 改回100ms
                                                 let bytes = bytes_downloaded.swap(0, Ordering::Relaxed);
                                                 let elapsed = now.duration_since(*last).as_secs_f64();
                                                 if elapsed > 0.0 {
                                                     let speed = bytes as f64 / elapsed;
-                                                    println!("Chunk {} speed: {:.2} MiB/s", chunk_index, speed / 1024.0 / 1024.0);
+                                                    println!("Speed: {:.2} MiB/s", speed / 1024.0 / 1024.0);
                                                 }
                                                 *last = now;
                                             }
