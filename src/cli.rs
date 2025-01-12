@@ -2,6 +2,8 @@ use std::env;
 use pyo3::prelude::*;
 use crate::download::repo;
 use tokio::runtime::Runtime;
+use crate::auth::Auth;
+use glob;
 
 pub struct CliArgs {
     pub model_id: String,
@@ -116,7 +118,8 @@ pub async fn download_file(
     exclude_patterns: Option<Vec<String>>,
     token: Option<String>,
 ) -> PyResult<String> {
-    let config = crate::config::Config::load()?;
+    let config = crate::config::Config::load()
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
     let client = reqwest::Client::new();
     let base_path = if let Some(dir) = local_dir {
         std::path::PathBuf::from(dir)
@@ -125,12 +128,18 @@ pub async fn download_file(
         std::path::PathBuf::from(base)
     };
 
+    // 创建 Auth 对象
+    let auth = crate::auth::Auth {
+        token: token.clone(),
+        username: None,
+    };
+
     // 获取仓库信息
     let repo_info = repo::get_repo_info(
         &client,
         &config,
         &model_id,
-        &token,
+        &auth,
     ).await?;
 
     // 根据仓库信息判断是否为数据集
@@ -142,16 +151,29 @@ pub async fn download_file(
         .await
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
 
-    // 获取需要下载的文件列表
-    let files = repo::get_repo_files(
-        &client,
-        &config,
-        &model_id,
-        &token,
-        is_dataset,
-        include_patterns,
-        exclude_patterns,
-    ).await?;
+    // 使用 repo_info 中的文件列表
+    let mut files = repo_info.files;
+
+    // 应用文件过滤
+    if let Some(patterns) = include_patterns {
+        files.retain(|file| {
+            patterns.iter().any(|pattern| {
+                glob::Pattern::new(pattern)
+                    .map(|p| p.matches(&file.rfilename))
+                    .unwrap_or(false)
+            })
+        });
+    }
+
+    if let Some(patterns) = exclude_patterns {
+        files.retain(|file| {
+            !patterns.iter().any(|pattern| {
+                glob::Pattern::new(pattern)
+                    .map(|p| p.matches(&file.rfilename))
+                    .unwrap_or(false)
+            })
+        });
+    }
 
     // 下载文件
     crate::download::download_task::download_folder(
