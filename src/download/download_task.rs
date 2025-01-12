@@ -92,9 +92,6 @@ pub async fn download_small_file(
             .progress_chars("#>-"));
         pb.set_message(format!("Downloading {}", file.rfilename));
         pb.enable_steady_tick(Duration::from_millis(100));
-        if downloaded_size > 0 {
-            pb.set_position(downloaded_size);
-        }
         pb
     };
 
@@ -116,6 +113,7 @@ pub async fn download_small_file(
             .map_err(|e| format!("Failed to create file: {}", e))?
     };
 
+    let mut current_position = downloaded_size;  // 跟踪当前下载位置
     let mut stream = response.bytes_stream();
     while let Some(chunk_result) = stream.next().await {
         if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
@@ -124,7 +122,8 @@ pub async fn download_small_file(
 
         let chunk = chunk_result.map_err(|e| format!("Failed to download chunk: {}", e))?;
         output_file.write_all(&chunk).await.map_err(|e| format!("Failed to write chunk: {}", e))?;
-        pb.set_position(pb.position() + chunk.len() as u64);
+        current_position += chunk.len() as u64;
+        pb.set_position(current_position);
     }
 
     if parent_pb.is_none() {
