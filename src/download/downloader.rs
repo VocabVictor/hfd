@@ -103,6 +103,7 @@ impl ModelDownloader {
                         model_id,
                         is_dataset,
                         None,
+                        &self.config,
                     ).await.map_err(|e| PyRuntimeError::new_err(e))?;
                 } else {
                     download_small_file(

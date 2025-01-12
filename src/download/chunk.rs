@@ -8,6 +8,7 @@ use std::io::SeekFrom;
 use futures::StreamExt;
 use std::time::Duration;
 use crate::INTERRUPT_FLAG;
+use crate::config::Config;
 
 pub async fn download_file_with_chunks(
     client: &Client,
@@ -19,6 +20,7 @@ pub async fn download_file_with_chunks(
     token: Option<String>,
     pb: Arc<ProgressBar>,
     running: Arc<AtomicBool>,
+    config: &Config,
 ) -> Result<(), String> {
     // 检查chunk_size是否为0
     if chunk_size == 0 {
@@ -59,7 +61,7 @@ pub async fn download_file_with_chunks(
     pb.set_position(downloaded_size);
 
     // 创建信号量来限制并发连接数
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(8));  // 使用配置的连接数
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(config.connections_per_download));
 
     // 创建或打开文件
     let file = tokio::fs::OpenOptions::new()

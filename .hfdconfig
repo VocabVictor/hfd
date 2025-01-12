@@ -1,9 +1,9 @@
-endpoint = "https://huggingface.co"
+endpoint = "https://hf-mirror.com"
 use_local_dir = true
 local_dir_base = "~/.code/models"
-concurrent_downloads = 2
-connections_per_download = 4
+concurrent_downloads = 8
+connections_per_download = 8
 parallel_download_threshold = 10485760  # 10MB
-chunk_size = 8388608  # 8MB
-buffer_size = 4194304  # 4MB
+chunk_size = 33554432  # 32MB
+buffer_size = 16777216  # 16MB
 max_retries = 5 

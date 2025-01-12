@@ -11,6 +11,7 @@ use futures::StreamExt;
 use std::time::Duration;
 use tokio::fs;
 use crate::download::chunk::download_file_with_chunks;
+use crate::config::Config;
 
 const DEFAULT_CHUNK_SIZE: usize = 16 * 1024 * 1024; // 16MB
 const DEFAULT_MAX_RETRIES: usize = 3;
@@ -25,10 +26,25 @@ pub async fn download_small_file(
     is_dataset: bool,
     parent_pb: Option<Arc<ProgressBar>>,
 ) -> Result<(), String> {
+    let size = file.size.unwrap_or(0);
+
+    // 创建文件自己的进度条
+    let file_pb = Arc::new(ProgressBar::new(size));
+    file_pb.set_style(ProgressStyle::default_bar()
+        .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
+        .unwrap()
+        .progress_chars("#>-"));
+    file_pb.set_message(format!("Downloading {}", file.rfilename));
+    file_pb.enable_steady_tick(Duration::from_millis(100));
+
     // 检查文件是否已经下载
     if let Some(size) = file.size {
         if let Ok(metadata) = tokio::fs::metadata(path).await {
             if metadata.len() >= size {
+                file_pb.finish_with_message(format!("✓ File already exists: {}", file.rfilename));
+                if let Some(pb) = parent_pb {
+                    pb.inc(size);
+                }
                 return Ok(());
             }
         }
@@ -104,8 +120,18 @@ pub async fn download_chunked_file(
     model_id: &str,
     is_dataset: bool,
     parent_pb: Option<Arc<ProgressBar>>,
+    config: &Config,
 ) -> Result<(), String> {
     let size = file.size.ok_or("File size is required for chunked download")?;
+
+    // 创建文件自己的进度条
+    let file_pb = Arc::new(ProgressBar::new(size));
+    file_pb.set_style(ProgressStyle::default_bar()
+        .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
+        .unwrap()
+        .progress_chars("#>-"));
+    file_pb.set_message(format!("Downloading {}", file.rfilename));
+    file_pb.enable_steady_tick(Duration::from_millis(100));
 
     // 确保父目录存在
     if let Some(parent) = path.parent() {
@@ -121,7 +147,7 @@ pub async fn download_chunked_file(
     };
 
     let running = Arc::new(AtomicBool::new(true));
-    download_file_with_chunks(
+    let result = download_file_with_chunks(
         client,
         url,
         path.clone(),
@@ -129,18 +155,21 @@ pub async fn download_chunked_file(
         chunk_size,
         max_retries,
         token,
-        parent_pb.unwrap_or_else(|| {
-            let pb = Arc::new(ProgressBar::new(size));
-            pb.set_style(ProgressStyle::default_bar()
-                .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
-                .unwrap()
-                .progress_chars("#>-"));
-            pb.set_message(format!("Downloading {}", file.rfilename));
-            pb.enable_steady_tick(Duration::from_millis(100));
-            pb
-        }),
+        file_pb.clone(),
         running.clone(),
-    ).await
+        config,
+    ).await;
+
+    if result.is_ok() {
+        file_pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
+        if let Some(pb) = parent_pb {
+            pb.inc(size);
+        }
+    } else {
+        file_pb.abandon_with_message(format!("Failed to download {}", file.rfilename));
+    }
+
+    result
 }
 
 pub async fn download_folder(
@@ -271,6 +300,7 @@ pub async fn download_folder(
                 &model_id,
                 is_dataset,
                 Some(total_pb),
+                &Config::default(),
             ).await;
             if result.is_ok() {
                 println!("Completed download of {}", file.rfilename);
@@ -326,6 +356,7 @@ pub async fn download_single_file(
             model_id,
             is_dataset,
             None,
+            &Config::default(),
         ).await
     } else {
         // 小文件直接下载
