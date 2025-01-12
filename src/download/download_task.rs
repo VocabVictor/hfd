@@ -128,7 +128,7 @@ pub async fn download_small_file(
     }
 
     if parent_pb.is_none() {
-        pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
+        println!("✓ Downloaded {}", file.rfilename);
     }
 
     Ok(())
@@ -219,9 +219,9 @@ pub async fn download_chunked_file(
 
     if parent_pb.is_none() {
         if result.is_ok() {
-            pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
+            println!("✓ Downloaded {}", file.rfilename);
         } else {
-            pb.abandon_with_message(format!("Failed to download {}", file.rfilename));
+            println!("Failed to download {}", file.rfilename);
         }
     }
 
