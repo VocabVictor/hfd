@@ -176,8 +176,6 @@ pub async fn download_file_with_chunks(
                                         }
                                         *last = now;
                                     }
-                                    
-                                    println!("Updated progress: {}/{} bytes", new_total, total_size);
                                 }
                                 Err(e) => {
                                     return Err(format!("Failed to download chunk: {}", e));
