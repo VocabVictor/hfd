@@ -174,10 +174,24 @@ pub async fn download_file_with_chunks(
 
     // 创建任务队列
     let mut tasks = Vec::new();
+    let chunk_count = chunks.len();
+    println!("Starting download with {} chunks", chunk_count);
+
+    // 创建一个通道来接收完成的块索引
+    let (tx, mut rx) = tokio::sync::mpsc::channel(chunk_count);
 
     while !chunks.is_empty() && running.load(Ordering::SeqCst) && !INTERRUPT_FLAG.load(Ordering::SeqCst) {
         // 获取一个信号量许可
-        let permit = semaphore.clone().acquire_owned().await.unwrap();
+        let permit = match semaphore.clone().try_acquire_owned() {
+            Ok(permit) => permit,
+            Err(_) => {
+                // 如果没有可用的许可，等待一个任务完成
+                if let Some(_) = rx.recv().await {
+                    continue;
+                }
+                break;
+            }
+        };
 
         let chunk_index = chunks.pop().unwrap();
         let start = chunk_index * chunk_size as u64;
@@ -191,8 +205,9 @@ pub async fn download_file_with_chunks(
         let bytes_downloaded = bytes_downloaded.clone();
         let total_downloaded = total_downloaded.clone();
         let last_update = last_update.clone();
+        let tx = tx.clone();
 
-        // 创建异步任务
+        // 创建并立即执行异步任务
         let task = tokio::spawn(async move {
             let _permit = permit;  // 在作用域结束时自动释放许可
             
@@ -210,7 +225,6 @@ pub async fn download_file_with_chunks(
                         // 检查响应状态码
                         if !response.status().is_success() {
                             let status = response.status();
-                            let _error_text = response.text().await.unwrap_or_default();
                             retries += 1;
                             if retries >= max_retries {
                                 return Err(format!("Server error {} after {} retries", status, max_retries));
@@ -282,6 +296,8 @@ pub async fn download_file_with_chunks(
                             continue;
                         }
 
+                        // 通知一个块已完成
+                        let _ = tx.send(chunk_index).await;
                         return Ok(());
                     }
                     Err(_) => {
