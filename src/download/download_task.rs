@@ -96,7 +96,6 @@ pub async fn download_small_file(
             .unwrap()
             .progress_chars("#>-"));
         pb.set_message(format!("Downloading {}", file.rfilename));
-        pb.enable_steady_tick(Duration::from_millis(100));
         // 设置初始位置为已下载的大小
         pb.set_position(downloaded_size);
         pb
@@ -139,19 +138,22 @@ pub async fn download_small_file(
         let new_position = downloaded_size + bytes_len;
         println!("Updating progress to: {}", new_position);
         pb.set_position(new_position);
+        pb.tick();  // 强制刷新进度条
         
         // 如果有父进度条，也需要更新
         if let Some(ref parent_pb) = parent_pb {
             parent_pb.inc(bytes_len);
+            parent_pb.tick();  // 强制刷新父进度条
         }
     } else {
         println!("Warning: Downloaded 0 bytes for {}", file.rfilename);
     }
 
     println!("Final progress position: {}", pb.position());
-
+    
+    // 完成下载后，确保进度条显示完成状态
     if parent_pb.is_none() {
-        println!("✓ Downloaded {}", file.rfilename);
+        pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
     }
 
     Ok(())
