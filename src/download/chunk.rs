@@ -70,8 +70,9 @@ pub async fn download_file_with_chunks(
         .map_err(|e| format!("Failed to open file: {}", e))?;
     let file = Arc::new(tokio::sync::Mutex::new(file));
 
-    // 创建共享的下载速度计数器
+    // 创建共享的下载速度计数器和总进度
     let bytes_downloaded = Arc::new(AtomicU64::new(0));
+    let total_downloaded = Arc::new(AtomicU64::new(downloaded_size));
     let last_update = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
 
     // 创建任务队列
@@ -91,6 +92,7 @@ pub async fn download_file_with_chunks(
         let pb = pb.clone();
         let file = file.clone();
         let bytes_downloaded = bytes_downloaded.clone();
+        let total_downloaded = total_downloaded.clone();
         let last_update = last_update.clone();
 
         // 创建异步任务
@@ -157,8 +159,10 @@ pub async fn download_file_with_chunks(
                                     // 更新位置
                                     current_pos += chunk_len;
 
-                                    // 更新下载速度统计
+                                    // 更新总进度和下载速度统计
+                                    let new_total = total_downloaded.fetch_add(chunk_len, Ordering::Relaxed) + chunk_len;
                                     bytes_downloaded.fetch_add(chunk_len, Ordering::Relaxed);
+                                    
                                     let mut last = last_update.lock().unwrap();
                                     let now = std::time::Instant::now();
                                     if now.duration_since(*last) >= Duration::from_millis(100) {
@@ -169,11 +173,12 @@ pub async fn download_file_with_chunks(
                                             pb.set_message(format!("{:.2} MiB/s", speed / 1024.0 / 1024.0));
                                         }
                                         *last = now;
+                                        
+                                        // 更新进度条位置
+                                        pb.set_position(new_total);
                                     }
                                     
-                                    // 更新进度条
-                                    pb.inc(chunk_len);
-                                    println!("Updated progress for chunk {}: {} bytes", chunk_index, chunk_len);
+                                    println!("Updated progress: {}/{} bytes", new_total, total_size);
                                 }
                                 Err(e) => {
                                     return Err(format!("Failed to download chunk: {}", e));
