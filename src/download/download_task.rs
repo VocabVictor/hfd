@@ -188,7 +188,7 @@ pub async fn download_folder(
     use tokio::select;
 
     let folder_name = name.clone();
-    let folder_path = base_path.join(&name);
+    let folder_path = base_path;
     tokio::fs::create_dir_all(&folder_path)
         .await
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
@@ -208,7 +208,7 @@ pub async fn download_folder(
         if let Some(size) = file.size {
             let file_downloaded_size = get_downloaded_size(&file_path).await;
             if file_downloaded_size < size {
-                total_download_size += size - file_downloaded_size;  // 只计算还需要下载的大小
+                total_download_size += size - file_downloaded_size;
                 need_download_files.push(file.clone());
             } else {
                 downloaded_files += 1;
