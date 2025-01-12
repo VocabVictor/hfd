@@ -44,10 +44,8 @@ impl DownloadManager {
     }
 
     pub async fn create_file_progress(&self, filename: String, size: u64) -> Arc<ProgressBar> {
-        println!("Creating progress for file: {} (size: {} bytes)", filename, size);
         let mut file_progress = self.file_progress.lock().await;
         if let Some(pb) = file_progress.get(&filename) {
-            println!("Progress already exists for file: {}", filename);
             return pb.clone();
         }
 
@@ -95,29 +93,21 @@ impl DownloadManager {
         // 检查队列中的下一个任务
         let mut queue = self.download_queue.lock().await;
         if let Some(next_task) = queue.pop_front() {
-            println!("Starting next download: {} (remaining in queue: {})", next_task.filename, queue.len());
             active_downloads.insert(next_task.filename.clone(), next_task.clone());
             next_task.progress.set_message(format!("Downloading {}", next_task.filename));
-        } else {
-            println!("No more files in queue");
         }
     }
 
     pub async fn acquire_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
-        println!("Acquiring download permit...");
         let permit = self.semaphore.clone().acquire_owned().await.unwrap();
-        println!("Permit acquired");
         
         // 获取许可后，从队列中取出任务并开始下载
         let mut queue = self.download_queue.lock().await;
         let mut active_downloads = self.active_downloads.lock().await;
         
         if let Some(task) = queue.pop_front() {
-            println!("Starting download: {} (remaining in queue: {})", task.filename, queue.len());
             active_downloads.insert(task.filename.clone(), task.clone());
             task.progress.set_message(format!("Downloading {}", task.filename));
-        } else {
-            println!("No tasks in queue when acquiring permit");
         }
         
         permit
