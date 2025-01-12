@@ -24,7 +24,6 @@ pub async fn download_small_file(
     if let Some(size) = file.size {
         if let Ok(metadata) = tokio::fs::metadata(path).await {
             if metadata.len() >= size {
-                println!("File {} is already downloaded.", file.rfilename);
                 return Ok(());
             }
         }
@@ -150,22 +149,25 @@ pub async fn download_folder(
                 need_download_files.push(file.clone());
             } else {
                 downloaded_files += 1;
-                println!("File {} is already downloaded.", file.rfilename);
             }
         }
     }
 
     // 如果所有文件都已下载完成，直接返回
     if need_download_files.is_empty() {
-        println!("All {} files in folder {} are already downloaded.", total_files, folder_name);
         return Ok(());
     }
 
     println!("Found {} already downloaded files, downloading remaining {} files, total size: {} bytes",
             downloaded_files, need_download_files.len(), total_download_size);
 
-    // 创建下载管理器 - 只创建一个文件夹级别的进度条
-    let download_manager = DownloadManager::new_folder(total_download_size, folder_name.clone(), crate::config::Config::default());
+    // 创建下载管理器 - 使用实际的文件夹名
+    let folder_display_name = if let Some(first_file) = need_download_files.first() {
+        first_file.rfilename.split('/').next().unwrap_or(&folder_name).to_string()
+    } else {
+        folder_name.clone()
+    };
+    let download_manager = DownloadManager::new_folder(total_download_size, folder_display_name, crate::config::Config::default());
 
     // 创建一个中断检测任务
     let interrupt_task = tokio::spawn(async move {
