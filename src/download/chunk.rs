@@ -2,7 +2,7 @@ use reqwest::Client;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use indicatif::ProgressBar;
+use indicatif::{ProgressBar, ProgressStyle};
 use tokio::io::{AsyncWriteExt, AsyncSeekExt};
 use std::io::SeekFrom;
 use futures::StreamExt;
