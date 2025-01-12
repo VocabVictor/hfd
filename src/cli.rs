@@ -2,7 +2,6 @@ use std::env;
 use pyo3::prelude::*;
 use crate::download::repo;
 use tokio::runtime::Runtime;
-use crate::auth::Auth;
 use glob;
 
 pub struct CliArgs {
@@ -131,7 +130,6 @@ pub async fn download_file(
     // 创建 Auth 对象
     let auth = crate::auth::Auth {
         token: token.clone(),
-        username: None,
     };
 
     // 获取仓库信息
