@@ -164,8 +164,8 @@ pub async fn download_folder(
     println!("Found {} already downloaded files, downloading remaining {} files, total size: {} bytes",
             downloaded_files, need_download_files.len(), total_download_size);
 
-    // 创建下载管理器
-    let download_manager = DownloadManager::new(total_download_size, crate::config::Config::default());
+    // 创建下载管理器 - 只创建一个文件夹级别的进度条
+    let download_manager = DownloadManager::new_folder(total_download_size, folder_name.clone(), crate::config::Config::default());
 
     // 创建一个中断检测任务
     let interrupt_task = tokio::spawn(async move {
@@ -224,14 +224,17 @@ pub async fn download_folder(
             task.await.map_err(|e| format!("Task failed: {}", e))??;
         }
 
-        Ok::<_, String>(())  // 明确指定返回类型
+        Ok::<_, String>(())
     };
 
     // 使用 select! 等待任务完成或中断
     select! {
         result = download_task => {
             match result {
-                Ok(_) => Ok(()),
+                Ok(_) => {
+                    download_manager.finish_folder().await;
+                    Ok(())
+                },
                 Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(e))
             }
         },

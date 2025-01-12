@@ -26,6 +26,8 @@ pub struct DownloadManager {
     active_downloads: Arc<Mutex<HashMap<String, DownloadTask>>>,
     semaphore: Arc<Semaphore>,
     config: Arc<Config>,
+    is_folder: bool,  // 是否是文件夹下载
+    folder_progress: Arc<Mutex<Option<Arc<ProgressBar>>>>,  // 文件夹总进度条
 }
 
 impl DownloadManager {
@@ -39,6 +41,30 @@ impl DownloadManager {
             active_downloads: Arc::new(Mutex::new(HashMap::new())),
             semaphore: Arc::new(Semaphore::new(config.concurrent_downloads)),
             config: Arc::new(config),
+            is_folder: false,
+            folder_progress: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub fn new_folder(total_size: u64, folder_name: String, config: Config) -> Self {
+        let multi_progress = Arc::new(MultiProgress::new());
+        let pb = Arc::new(multi_progress.add(ProgressBar::new(total_size)));
+        pb.set_style(ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
+            .unwrap()
+            .progress_chars("#>-"));
+        pb.set_message(format!("Downloading folder {}", folder_name));
+        pb.enable_steady_tick(Duration::from_millis(100));
+        
+        Self {
+            multi_progress,
+            file_progress: Arc::new(Mutex::new(HashMap::new())),
+            download_queue: Arc::new(Mutex::new(VecDeque::new())),
+            active_downloads: Arc::new(Mutex::new(HashMap::new())),
+            semaphore: Arc::new(Semaphore::new(config.concurrent_downloads)),
+            config: Arc::new(config),
+            is_folder: true,
+            folder_progress: Arc::new(Mutex::new(Some(pb))),
         }
     }
 
@@ -57,6 +83,14 @@ impl DownloadManager {
             return pb.clone();
         }
 
+        if self.is_folder {
+            // 如果是文件夹下载，不创建单独的进度条
+            let folder_progress = self.folder_progress.lock().await;
+            if let Some(pb) = folder_progress.as_ref() {
+                return pb.clone();
+            }
+        }
+
         let pb = Arc::new(self.multi_progress.add(ProgressBar::new(size)));
         pb.set_style(ProgressStyle::default_bar()
             .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
@@ -65,7 +99,6 @@ impl DownloadManager {
         pb.set_message(format!("Downloading {}", filename));
         pb.enable_steady_tick(Duration::from_millis(100));
 
-        // 创建下载任务并加入队列
         let task = DownloadTask {
             filename: filename.clone(),
             size,
@@ -80,6 +113,15 @@ impl DownloadManager {
     }
 
     pub async fn update_progress(&self, filename: &str, bytes: u64) {
+        if self.is_folder {
+            // 如果是文件夹下载，更新文件夹总进度条
+            let folder_progress = self.folder_progress.lock().await;
+            if let Some(pb) = folder_progress.as_ref() {
+                pb.inc(bytes);
+            }
+            return;
+        }
+
         let file_progress = self.file_progress.lock().await;
         if let Some(pb) = file_progress.get(filename) {
             pb.inc(bytes);
@@ -88,6 +130,11 @@ impl DownloadManager {
     }
 
     pub async fn finish_file(&self, filename: &str) {
+        if self.is_folder {
+            // 如果是文件夹下载，不处理单个文件的完成
+            return;
+        }
+
         let mut file_progress = self.file_progress.lock().await;
         let mut active_downloads = self.active_downloads.lock().await;
         
@@ -101,11 +148,25 @@ impl DownloadManager {
         
         active_downloads.remove(filename);
 
-        // 检查队列中的下一个任务
         let mut queue = self.download_queue.lock().await;
         if let Some(next_task) = queue.pop_front() {
             active_downloads.insert(next_task.filename.clone(), next_task.clone());
             next_task.progress.set_message(format!("Downloading {}", next_task.filename));
+        }
+    }
+
+    pub async fn finish_folder(&self) {
+        if !self.is_folder {
+            return;
+        }
+
+        let folder_progress = self.folder_progress.lock().await;
+        if let Some(pb) = folder_progress.as_ref() {
+            pb.finish_with_message("✓ Folder download completed");
+            pb.set_style(ProgressStyle::default_bar()
+                .template("[{elapsed_precise}] [{bar:40.green/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
+                .unwrap()
+                .progress_chars("#>-"));
         }
     }
 
