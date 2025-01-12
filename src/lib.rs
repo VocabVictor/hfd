@@ -11,9 +11,9 @@ mod auth;
 mod config;
 mod download;
 mod types;
-mod cli;
+pub mod cli;
 
-fn setup_interrupt_handler() {
+pub fn setup_interrupt_handler() {
     let flag = INTERRUPT_FLAG.clone();
     ctrlc::set_handler(move || {
         flag.store(true, Ordering::SeqCst);

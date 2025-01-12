@@ -103,16 +103,11 @@ impl Config {
         let config_paths: Vec<_> = config_paths.into_iter().flatten().collect();
 
         let mut config = Self::default();
-        println!("Default config: {:#?}", config);
 
         for path in config_paths {
-            println!("Checking config file: {}", path.display());
             if let Ok(content) = fs::read_to_string(&path) {
-                println!("Loading config from: {}", path.display());
-                println!("Config content:\n{}", content);
                 match toml::from_str::<Config>(&content) {
                     Ok(new_config) => {
-                        println!("Successfully loaded config from {}: {:#?}", path.display(), new_config);
                         // 合并配置
                         if new_config.concurrent_downloads > 0 {
                             config.concurrent_downloads = new_config.concurrent_downloads;
@@ -134,14 +129,11 @@ impl Config {
                         config.hf_username = new_config.hf_username;
                         config.hf_token = new_config.hf_token;
                     }
-                    Err(e) => {
-                        println!("Failed to parse config file {}: {}", path.display(), e);
-                    }
+                    Err(_) => continue,
                 }
             }
         }
 
-        println!("Final config: {:#?}", config);
         Ok(config)
     }
 

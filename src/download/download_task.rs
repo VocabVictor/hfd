@@ -24,7 +24,6 @@ pub async fn download_small_file(
     if let Some(size) = file.size {
         if let Ok(metadata) = tokio::fs::metadata(path).await {
             if metadata.len() >= size {
-                println!("File {} is already downloaded.", file.rfilename);
                 return Ok(());
             }
         }
@@ -150,14 +149,12 @@ pub async fn download_folder(
                 need_download_files.push(file.clone());
             } else {
                 downloaded_files += 1;
-                println!("File {} is already downloaded.", file.rfilename);
             }
         }
     }
 
     // 如果所有文件都已下载完成，直接返回
     if need_download_files.is_empty() {
-        println!("All {} files in folder {} are already downloaded.", total_files, folder_name);
         return Ok(());
     }
 
