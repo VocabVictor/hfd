@@ -2,6 +2,7 @@ use crate::types::FileInfo;
 use crate::config::Config;
 use glob::Pattern;
 
+#[allow(dead_code)]
 pub fn should_download(config: &Config, file: &FileInfo) -> bool {
     // 如果没有设置任何过滤规则，则下载所有文件
     if config.include_patterns.is_empty() && config.exclude_patterns.is_empty() {

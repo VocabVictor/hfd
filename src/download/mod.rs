@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use tokio::sync::{Semaphore, mpsc};
+use tokio::sync::Semaphore;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::collections::{HashMap, VecDeque};
 use tokio::sync::Mutex;
@@ -14,6 +14,7 @@ pub mod download_task;
 #[derive(Clone)]
 struct DownloadTask {
     filename: String,
+    #[allow(dead_code)]
     size: u64,
     progress: Arc<ProgressBar>,
 }
@@ -31,7 +32,7 @@ pub struct DownloadManager {
 }
 
 impl DownloadManager {
-    pub fn new(total_size: u64, config: Config) -> Self {
+    pub fn new(_total_size: u64, config: Config) -> Self {
         let multi_progress = Arc::new(MultiProgress::new());
         
         Self {
@@ -185,6 +186,7 @@ impl DownloadManager {
         permit
     }
 
+    #[allow(dead_code)]
     pub async fn print_status(&self) {
         let queue = self.download_queue.lock().await;
         let active = self.active_downloads.lock().await;

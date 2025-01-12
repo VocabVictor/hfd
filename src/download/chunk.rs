@@ -50,7 +50,7 @@ pub async fn download_chunked_file(
     };
 
     // 创建进度条 - 只在文件开始下载时创建一次
-    let pb = if downloaded_size == 0 {
+    let _pb = if downloaded_size == 0 {
         download_manager.create_file_progress(file.rfilename.clone(), size).await
     } else {
         download_manager.get_progress(&file.rfilename).await
@@ -182,7 +182,7 @@ pub async fn download_chunked_file(
                                                 let bytes = bytes_downloaded.swap(0, Ordering::Relaxed);
                                                 let elapsed = now.duration_since(*last).as_secs_f64();
                                                 if elapsed > 0.0 {
-                                                    let speed = bytes as f64 / elapsed;
+                                                    let _speed = bytes as f64 / elapsed;
                                                 }
                                                 *last = now;
                                             }
@@ -225,7 +225,7 @@ pub async fn download_chunked_file(
     }
 
     // 等待所有任务完成
-    for (i, task) in tasks.into_iter().enumerate() {
+    for (_i, task) in tasks.into_iter().enumerate() {
         task.await.map_err(|e| format!("Task failed: {}", e))??;
     }
 
