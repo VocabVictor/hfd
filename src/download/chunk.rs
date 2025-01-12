@@ -113,7 +113,7 @@ pub async fn download_file_with_chunks(
                         // 检查响应状态码
                         if !response.status().is_success() {
                             let status = response.status();
-                            let error_text = response.text().await.unwrap_or_default();
+                            let _error_text = response.text().await.unwrap_or_default();
                             retries += 1;
                             if retries >= max_retries {
                                 return Err(format!("Server error {} after {} retries", status, max_retries));

@@ -5,6 +5,7 @@ use pyo3::prelude::*;
 use reqwest::Client;
 use std::path::PathBuf;
 use super::{download_small_file, download_chunked_file, download_folder, should_download};
+use pyo3::exceptions::PyRuntimeError;
 
 pub struct ModelDownloader {
     pub(crate) client: Client,
@@ -40,6 +41,10 @@ impl ModelDownloader {
             auth,
             cache_dir,
         })
+    }
+
+    fn to_py_err(err: String) -> PyErr {
+        PyRuntimeError::new_err(err)
     }
 
     pub async fn download_files(
@@ -102,7 +107,7 @@ impl ModelDownloader {
                         model_id,
                         is_dataset,
                         None,  // 不使用共享进度条
-                    ).await?;
+                    ).await.map_err(|e| Self::to_py_err(e))?;
                 } else {
                     download_small_file(
                         &self.client,
@@ -113,7 +118,7 @@ impl ModelDownloader {
                         model_id,
                         is_dataset,
                         None,  // 不使用共享进度条
-                    ).await?;
+                    ).await.map_err(|e| Self::to_py_err(e))?;
                 }
             } else {
                 download_small_file(
@@ -125,7 +130,7 @@ impl ModelDownloader {
                     model_id,
                     is_dataset,
                     None,  // 不使用共享进度条
-                ).await?;
+                ).await.map_err(|e| Self::to_py_err(e))?;
             }
         }
 
@@ -140,7 +145,7 @@ impl ModelDownloader {
                 files,
                 self.auth.token.clone(),
                 is_dataset,
-            ).await?;
+            ).await.map_err(|e| Self::to_py_err(e))?;
         }
 
         Ok(())
