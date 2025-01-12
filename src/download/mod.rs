@@ -14,7 +14,6 @@ pub mod download_task;
 #[derive(Clone)]
 pub struct DownloadManager {
     multi_progress: Arc<MultiProgress>,
-    total_progress: Arc<ProgressBar>,
     file_progress: Arc<Mutex<HashMap<String, Arc<ProgressBar>>>>,
     semaphore: Arc<Semaphore>,
     config: Arc<Config>,
@@ -24,26 +23,12 @@ impl DownloadManager {
     pub fn new(total_size: u64, config: Config) -> Self {
         let multi_progress = Arc::new(MultiProgress::new());
         
-        // 创建总进度条
-        let total_progress = Arc::new(multi_progress.add(ProgressBar::new(total_size)));
-        total_progress.set_style(ProgressStyle::default_bar()
-            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
-            .unwrap()
-            .progress_chars("#>-"));
-        total_progress.set_message("Downloading files");
-        total_progress.enable_steady_tick(Duration::from_millis(100));
-
         Self {
             multi_progress,
-            total_progress,
             file_progress: Arc::new(Mutex::new(HashMap::new())),
             semaphore: Arc::new(Semaphore::new(config.concurrent_downloads)),
             config: Arc::new(config),
         }
-    }
-
-    pub fn get_total_progress(&self) -> Arc<ProgressBar> {
-        self.total_progress.clone()
     }
 
     pub async fn create_file_progress(&self, filename: String, size: u64) -> Arc<ProgressBar> {
@@ -68,7 +53,6 @@ impl DownloadManager {
         let file_progress = self.file_progress.lock().await;
         if let Some(pb) = file_progress.get(filename) {
             pb.inc(bytes);
-            self.total_progress.inc(bytes);
         }
     }
 
