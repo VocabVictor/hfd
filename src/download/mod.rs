@@ -1,9 +1,8 @@
 use std::sync::Arc;
 use tokio::sync::{Semaphore, mpsc};
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar};
 use std::collections::{HashMap, VecDeque, HashSet};
 use tokio::sync::Mutex;
-use std::time::Duration;
 use crate::config::Config;
 
 pub mod chunk;
@@ -51,8 +50,8 @@ impl DownloadManager {
         self.config.clone()
     }
 
-    pub fn create_progress(&self, filename: String, size: u64) -> Arc<ProgressBar> {
-        let mut file_progress = self.file_progress.lock().unwrap();
+    pub async fn create_progress(&self, filename: String, size: u64) -> Arc<ProgressBar> {
+        let mut file_progress = self.file_progress.lock().await;
         if let Some(progress) = file_progress.get(&filename) {
             return progress.clone();
         }
@@ -62,21 +61,21 @@ impl DownloadManager {
         progress
     }
 
-    pub fn add_to_queue(&self, task: DownloadTask) {
-        let mut queue = self.download_queue.lock().unwrap();
+    pub async fn add_to_queue(&self, task: DownloadTask) {
+        let mut queue = self.download_queue.lock().await;
         queue.push_back(task);
     }
 
-    pub fn finish_download(&self, filename: &str) {
-        let mut active = self.active_downloads.lock().unwrap();
+    pub async fn finish_download(&self, filename: &str) {
+        let mut active = self.active_downloads.lock().await;
         active.remove(filename);
-        self.start_next_download();
+        self.start_next_download().await;
     }
 
-    fn start_next_download(&self) {
-        let mut queue = self.download_queue.lock().unwrap();
+    async fn start_next_download(&self) {
+        let mut queue = self.download_queue.lock().await;
         if let Some(next_task) = queue.pop_front() {
-            let mut active = self.active_downloads.lock().unwrap();
+            let mut active = self.active_downloads.lock().await;
             active.insert(next_task.filename.clone());
             tokio::spawn(async move {
                 // TODO: Implement actual download logic
@@ -86,9 +85,9 @@ impl DownloadManager {
 
     pub async fn acquire_permit(&self) -> Option<DownloadTask> {
         let _permit = self.semaphore.acquire().await.ok()?;
-        let mut queue = self.download_queue.lock().unwrap();
+        let mut queue = self.download_queue.lock().await;
         if let Some(task) = queue.pop_front() {
-            let mut active = self.active_downloads.lock().unwrap();
+            let mut active = self.active_downloads.lock().await;
             active.insert(task.filename.clone());
             Some(task)
         } else {
@@ -96,9 +95,9 @@ impl DownloadManager {
         }
     }
 
-    pub fn print_status(&self) {
-        let queue = self.download_queue.lock().unwrap();
-        let active = self.active_downloads.lock().unwrap();
+    pub async fn print_status(&self) {
+        let queue = self.download_queue.lock().await;
+        let active = self.active_downloads.lock().await;
         // TODO: Implement status printing
     }
 } 

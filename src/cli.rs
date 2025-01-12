@@ -4,6 +4,8 @@ use crate::download::repo;
 use tokio::runtime::Runtime;
 use glob;
 use std::sync::Arc;
+use crate::types::FileInfo;
+use crate::config::Config;
 
 pub struct CliArgs {
     pub model_id: String,
@@ -111,12 +113,32 @@ Example:
     hfd meta-llama/Llama-2-7b --hf_username myuser --hf_token mytoken"#);
 }
 
-pub async fn download_file(file: FileInfo, config: Config) -> PyResult<()> {
+pub async fn download_file(model_id: String, config: Config) -> PyResult<String> {
     let config = Arc::new(config);
-    crate::download::download_task::download_file(file, config)
+    
+    // 获取仓库信息
+    let client = reqwest::Client::new();
+    let repo_info = repo::get_repo_info(
+        &client,
+        &config,
+        &model_id,
+        &None, // 暂时不使用token
+    ).await?;
+
+    // 创建下载目录
+    let target_path = std::path::PathBuf::from(&config.local_dir_base).join(&model_id);
+    tokio::fs::create_dir_all(&target_path)
         .await
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
-    Ok(())
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
+
+    // 使用第一个文件进行下载
+    if let Some(file) = repo_info.files.first() {
+        crate::download::download_task::download_file(file.clone(), config)
+            .await
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
+    }
+
+    Ok(target_path.to_string_lossy().to_string())
 }
 
 pub fn run_cli() -> PyResult<()> {
@@ -124,14 +146,9 @@ pub fn run_cli() -> PyResult<()> {
         let rt = Runtime::new()
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create runtime: {}", e)))?;
             
-        match rt.block_on(download_file(
-            args.model_id,
-            args.local_dir,
-            args.include_patterns,
-            args.exclude_patterns,
-            args.hf_token,
-        )) {
-            Ok(result) => println!("{}", result),
+        let config = Config::default();
+        match rt.block_on(download_file(args.model_id, config)) {
+            Ok(path) => println!("Downloaded to: {}", path),
             Err(e) => println!("Error: {}", e),
         }
     }

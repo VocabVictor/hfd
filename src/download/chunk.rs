@@ -1,9 +1,11 @@
 use std::path::PathBuf;
 use std::fs;
+use std::sync::Arc;
+use std::time::{Instant, Duration};
 use tokio::sync::Semaphore;
 use tokio::fs::OpenOptions;
-use std::time::Instant;
 use tokio::io::{AsyncWriteExt, AsyncSeekExt};
+use futures::StreamExt;
 use reqwest::Client;
 use crate::download::DownloadManager;
 use crate::INTERRUPT_FLAG;
@@ -40,7 +42,7 @@ pub async fn download_chunked_file(
             let _permit = semaphore.acquire().await.map_err(|e| e.to_string())?;
 
             let response = client
-                .get(&file_clone.url)
+                .get(&format!("{}/resolve/main/{}", download_manager.get_config().endpoint, file_clone.rfilename))
                 .header("Range", format!("bytes={}-{}", start, end - 1))
                 .send()
                 .await

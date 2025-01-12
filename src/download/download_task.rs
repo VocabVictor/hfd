@@ -72,7 +72,7 @@ pub async fn download_small_file(
     };
 
     // 创建进度条
-    let _pb = download_manager.create_file_progress(file.rfilename.clone(), total_size).await;
+    let _pb = download_manager.create_progress(file.rfilename.clone(), total_size).await;
 
     let mut output_file = if downloaded_size > 0 {
         let mut file = tokio::fs::OpenOptions::new()
@@ -105,11 +105,11 @@ pub async fn download_small_file(
     // 更新进度
     let bytes_len = bytes.len() as u64;
     if bytes_len > 0 {
-        download_manager.update_progress(&file.rfilename, bytes_len).await;
+        download_manager.create_progress(&file.rfilename, bytes_len).await;
     }
 
     // 完成下载
-    download_manager.finish_file(&file.rfilename).await;
+    download_manager.finish_download(&file.rfilename).await;
 
     Ok(())
 }
@@ -164,7 +164,8 @@ pub async fn download_folder(
             downloaded_files, need_download_files.len(), total_download_size);
 
     // 创建下载管理器
-    let download_manager = DownloadManager::new(total_download_size, crate::config::Config::default());
+    let config = Arc::new(Config::default());
+    let download_manager = Arc::new(DownloadManager::new(config));
 
     // 创建一个中断检测任务
     let interrupt_task = tokio::spawn(async move {
@@ -190,18 +191,7 @@ pub async fn download_folder(
 
             let task = tokio::spawn(async move {
                 if file.size.unwrap_or(0) > download_manager.get_config().parallel_download_threshold {
-                    download_chunked_file(
-                        &client,
-                        &file,
-                        &file_path,
-                        download_manager.get_config().chunk_size,
-                        download_manager.get_config().max_retries,
-                        token,
-                        &endpoint,
-                        &model_id,
-                        is_dataset,
-                        &download_manager,
-                    ).await
+                    download_chunked_file(&file, &client, download_manager).await
                 } else {
                     download_small_file(
                         &client,
@@ -223,7 +213,7 @@ pub async fn download_folder(
             task.await.map_err(|e| format!("Task failed: {}", e))??;
         }
 
-        Ok::<_, String>(())  // 明确指定返回类型
+        Ok::<_, String>(())
     };
 
     // 使用 select! 等待任务完成或中断
@@ -258,7 +248,7 @@ pub async fn download_file(
     let client = Client::new();
     let download_manager = Arc::new(DownloadManager::new(config));
     
-    let progress = download_manager.create_progress(file.rfilename.clone(), file.size.unwrap_or(0));
+    let progress = download_manager.create_progress(file.rfilename.clone(), file.size.unwrap_or(0)).await;
     
     download_chunked_file(&file, &client, download_manager.clone()).await?;
     
