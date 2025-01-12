@@ -187,7 +187,6 @@ pub async fn download_folder(
     use crate::INTERRUPT_FLAG;
 
     let folder_name = name.clone();
-    println!("DEBUG: Starting download_folder for {}", folder_name);
     let folder_path = base_path.join(&name);
     tokio::fs::create_dir_all(&folder_path)
         .await
@@ -210,7 +209,6 @@ pub async fn download_folder(
             } else {
                 total_download_size += size - downloaded_size;  // 只计算需要下载的部分
                 need_download_files.push(file.clone());
-                println!("DEBUG: Added file to download queue: {}/{} (size: {})", folder_name, file.rfilename, size);
             }
         }
     }
@@ -220,7 +218,7 @@ pub async fn download_folder(
         return Ok(());
     }
 
-    println!("DEBUG: Need to download {} files in folder {}, total size: {} bytes", need_download_files.len(), folder_name, total_download_size);
+    println!("Need to download {} files, total size: {} bytes", need_download_files.len(), total_download_size);
 
     let pb = Arc::new(ProgressBar::new(total_download_size));
     pb.set_style(ProgressStyle::default_bar()
@@ -234,15 +232,11 @@ pub async fn download_folder(
         .into_iter()
         .partition(|file| file.size.map_or(false, |size| size > DEFAULT_CHUNK_SIZE as u64));
 
-    println!("DEBUG: Split files in folder {}: {} large files, {} small files", 
-        folder_name, large_files.len(), small_files.len());
-
     let mut tasks = Vec::new();
     let max_concurrent_small_files = 3;  // 减少并发数，避免进度显示混乱
     let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_small_files));
 
     // 处理小文件
-    println!("DEBUG: Starting to process small files in folder {}", folder_name);
     for file in small_files {
         if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
             pb.abandon_with_message("Download interrupted by user");
@@ -257,10 +251,9 @@ pub async fn download_folder(
         let endpoint = endpoint.clone();
         let model_id = model_id.clone();
 
-        println!("DEBUG: Creating task for small file: {}", file.rfilename);
         tasks.push(tokio::spawn(async move {
             let _permit = permit.acquire().await.unwrap();
-            println!("DEBUG: Starting download of small file: {}", file.rfilename);
+            println!("Starting download of {}", file.rfilename);
             let result = download_small_file(
                 &client,
                 &file,
@@ -272,16 +265,13 @@ pub async fn download_folder(
                 Some(pb),
             ).await;
             if result.is_ok() {
-                println!("DEBUG: Completed download of small file: {}", file.rfilename);
-            } else {
-                println!("DEBUG: Failed to download small file: {}", file.rfilename);
+                println!("Completed download of {}", file.rfilename);
             }
             result
         }));
     }
 
     // 处理大文件
-    println!("DEBUG: Starting to process large files in folder {}", folder_name);
     for file in large_files {
         if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
             pb.abandon_with_message("Download interrupted by user");
@@ -295,9 +285,8 @@ pub async fn download_folder(
         let endpoint = endpoint.clone();
         let model_id = model_id.clone();
 
-        println!("DEBUG: Creating task for large file: {}", file.rfilename);
         tasks.push(tokio::spawn(async move {
-            println!("DEBUG: Starting download of large file: {}", file.rfilename);
+            println!("Starting download of {}", file.rfilename);
             let result = download_chunked_file(
                 &client,
                 &file,
@@ -311,34 +300,21 @@ pub async fn download_folder(
                 Some(pb),
             ).await;
             if result.is_ok() {
-                println!("DEBUG: Completed download of large file: {}", file.rfilename);
-            } else {
-                println!("DEBUG: Failed to download large file: {}", file.rfilename);
+                println!("Completed download of {}", file.rfilename);
             }
             result
         }));
     }
 
-    println!("DEBUG: Waiting for all tasks in folder {} to complete", folder_name);
-    for (i, task) in tasks.into_iter().enumerate() {
+    // 等待所有任务完成
+    for task in tasks {
         if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
             pb.abandon_with_message("Download interrupted by user");
             return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
         }
-        println!("DEBUG: Waiting for task {} in folder {}", i + 1, folder_name);
-        match task.await {
-            Ok(result) => {
-                println!("DEBUG: Task {} in folder {} completed with result: {:?}", i + 1, folder_name, result.is_ok());
-                result?;
-            },
-            Err(e) => {
-                println!("DEBUG: Task {} in folder {} failed with error: {}", i + 1, folder_name, e);
-                return Err(pyo3::exceptions::PyRuntimeError::new_err(format!("Task failed: {}", e)));
-            }
-        }
+        task.await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Task failed: {}", e)))??;
     }
 
-    println!("DEBUG: All tasks in folder {} completed", folder_name);
     pb.finish_with_message(format!("✓ Downloaded folder {}", folder_name));
     Ok(())
 }
@@ -346,18 +322,10 @@ pub async fn download_folder(
 async fn get_downloaded_size(path: &PathBuf) -> u64 {
     if path.exists() {
         match fs::metadata(path).await {
-            Ok(metadata) => {
-                let size = metadata.len();
-                println!("DEBUG: get_downloaded_size for {}: {}", path.display(), size);
-                size
-            },
-            Err(e) => {
-                println!("DEBUG: Error getting file size for {}: {}", path.display(), e);
-                0
-            }
+            Ok(metadata) => metadata.len(),
+            Err(_) => 0
         }
     } else {
-        println!("DEBUG: File does not exist: {}", path.display());
         0
     }
 } 
