@@ -80,18 +80,47 @@ impl Config {
         ];
         let config_paths: Vec<_> = config_paths.into_iter().flatten().collect();
 
+        let mut config = Self::default();
+        println!("Default config: {:#?}", config);
+
         for path in config_paths {
+            println!("Checking config file: {}", path.display());
             if let Ok(content) = fs::read_to_string(&path) {
                 println!("Loading config from: {}", path.display());
-                if let Ok(config) = toml::from_str(&content) {
-                    println!("Successfully loaded config from: {}", path.display());
-                    return Ok(config);
+                println!("Config content:\n{}", content);
+                match toml::from_str::<Config>(&content) {
+                    Ok(new_config) => {
+                        println!("Successfully loaded config from {}: {:#?}", path.display(), new_config);
+                        // 合并配置
+                        if new_config.concurrent_downloads > 0 {
+                            config.concurrent_downloads = new_config.concurrent_downloads;
+                        }
+                        if new_config.connections_per_download > 0 {
+                            config.connections_per_download = new_config.connections_per_download;
+                        }
+                        config.endpoint = new_config.endpoint;
+                        config.use_local_dir = new_config.use_local_dir;
+                        config.local_dir_base = new_config.local_dir_base;
+                        config.dataset_dir_base = new_config.dataset_dir_base;
+                        config.max_download_speed = new_config.max_download_speed;
+                        config.parallel_download_threshold = new_config.parallel_download_threshold;
+                        config.buffer_size = new_config.buffer_size;
+                        config.chunk_size = new_config.chunk_size;
+                        config.max_retries = new_config.max_retries;
+                        config.include_patterns = new_config.include_patterns;
+                        config.exclude_patterns = new_config.exclude_patterns;
+                        config.hf_username = new_config.hf_username;
+                        config.hf_token = new_config.hf_token;
+                    }
+                    Err(e) => {
+                        println!("Failed to parse config file {}: {}", path.display(), e);
+                    }
                 }
             }
         }
 
-        println!("No config file found, using default configuration");
-        Ok(Self::default())
+        println!("Final config: {:#?}", config);
+        Ok(config)
     }
 
     #[allow(dead_code)]
