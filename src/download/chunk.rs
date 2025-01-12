@@ -22,13 +22,11 @@ pub async fn download_chunked_file(
     is_dataset: bool,
     download_manager: &DownloadManager,
 ) -> Result<(), String> {
-    println!("Starting chunked download for file: {}", file.rfilename);
     let size = file.size.ok_or("File size is required for chunked download")?;
 
     // 检查文件是否已经下载
     if let Ok(metadata) = tokio::fs::metadata(path).await {
         if metadata.len() >= size {
-            println!("File {} is already downloaded.", file.rfilename);
             return Ok(());
         }
     }
@@ -45,11 +43,9 @@ pub async fn download_chunked_file(
     } else {
         format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
     };
-    println!("Download URL: {}", url);
 
     // 创建进度条
     let pb = download_manager.create_file_progress(file.rfilename.clone(), size).await;
-    println!("Progress bar created for file: {}", file.rfilename);
 
     // 获取已下载的大小
     let downloaded_size = if let Ok(metadata) = tokio::fs::metadata(&path).await {
@@ -57,7 +53,6 @@ pub async fn download_chunked_file(
     } else {
         0
     };
-    println!("Already downloaded size: {} bytes", downloaded_size);
 
     // 如果文件已经完全下载，直接返回
     if downloaded_size >= size {
@@ -69,16 +64,12 @@ pub async fn download_chunked_file(
     let start_chunk = downloaded_size / chunk_size as u64;
     let num_chunks = (size + chunk_size as u64 - 1) / chunk_size as u64;
     let mut chunks: Vec<_> = (start_chunk..num_chunks).collect();
-    println!("Need to download {} chunks (starting from chunk {})", chunks.len(), start_chunk);
 
     // 如果没有需要下载的块，直接返回
     if chunks.is_empty() {
         download_manager.finish_file(&file.rfilename).await;
         return Ok(());
     }
-
-    // 打印下载状态
-    download_manager.print_status().await;
 
     // 创建或打开文件
     let file_handle = tokio::fs::OpenOptions::new()
@@ -98,7 +89,6 @@ pub async fn download_chunked_file(
 
     // 创建信号量来限制并发连接数
     let semaphore = Arc::new(tokio::sync::Semaphore::new(download_manager.get_config().connections_per_download));
-    println!("Created semaphore with {} concurrent connections", download_manager.get_config().connections_per_download);
 
     while !chunks.is_empty() && !INTERRUPT_FLAG.load(Ordering::SeqCst) {
         // 获取一个信号量许可
@@ -115,7 +105,6 @@ pub async fn download_chunked_file(
         let chunk_index = chunks.pop().unwrap();
         let start = chunk_index * chunk_size as u64;
         let end = std::cmp::min(start + chunk_size as u64, size);
-        println!("Creating task for chunk {} ({}-{})", chunk_index, start, end);
         
         let client = client.clone();
         let url = url.clone();
@@ -138,31 +127,24 @@ pub async fn download_chunked_file(
                 if let Some(ref token) = token {
                     request = request.header("Authorization", format!("Bearer {}", token));
                 }
-
-                println!("Downloading chunk {} (bytes {}-{})", chunk_index, start, end - 1);
                 
                 match tokio::time::timeout(std::time::Duration::from_secs(35), request.send()).await {
                     Ok(response_result) => {
                         match response_result {
                             Ok(response) => {
-                                println!("Chunk {} received response with status: {}", chunk_index, response.status());
                                 if !response.status().is_success() {
                                     let status = response.status();
                                     let error_text = response.text().await.unwrap_or_default();
-                                    println!("Chunk {} failed with status {} and error: {}", chunk_index, status, error_text);
                                     retries += 1;
                                     if retries >= max_retries {
                                         return Err(format!("Server error {} after {} retries: {}", status, max_retries, error_text));
                                     }
-                                    println!("Retrying chunk {} (attempt {}/{})", chunk_index, retries + 1, max_retries);
                                     tokio::time::sleep(Duration::from_secs(1)).await;
                                     continue;
                                 }
 
                                 let mut stream = response.bytes_stream();
                                 let mut current_pos = start;
-
-                                println!("Starting to read chunk {} stream", chunk_index);
                                 
                                 while let Ok(Some(chunk_result)) = tokio::time::timeout(
                                     Duration::from_secs(30),
@@ -204,34 +186,28 @@ pub async fn download_chunked_file(
                                                 *last = now;
                                             }
                                         }
-                                        Err(e) => {
-                                            println!("Error downloading chunk {}: {}", chunk_index, e);
+                                            Err(e) => {
                                             return Err(format!("Failed to download chunk: {}", e));
                                         }
                                     }
                                 }
 
-                                println!("Chunk {} completed", chunk_index);
                                 return Ok(());
                             }
                             Err(e) => {
-                                println!("Chunk {} request failed with error: {}", chunk_index, e);
                                 retries += 1;
                                 if retries >= max_retries {
                                     return Err(format!("Failed to download chunk after {} retries: {}", max_retries, e));
                                 }
-                                println!("Retrying chunk {} (attempt {}/{})", chunk_index, retries + 1, max_retries);
                                 tokio::time::sleep(Duration::from_secs(1)).await;
                             }
                         }
                     }
                     Err(_) => {
-                        println!("Downloading chunk {} timed out", chunk_index);
                         retries += 1;
                         if retries >= max_retries {
                             return Err(format!("Download timed out after {} retries", max_retries));
                         }
-                        println!("Retrying chunk {} (attempt {}/{})", chunk_index, retries + 1, max_retries);
                         tokio::time::sleep(Duration::from_secs(1)).await;
                     }
                 }
@@ -247,15 +223,11 @@ pub async fn download_chunked_file(
         tasks.push(task);
     }
 
-    println!("All tasks created, waiting for completion...");
     // 等待所有任务完成
     for (i, task) in tasks.into_iter().enumerate() {
-        println!("Waiting for task {}", i);
         task.await.map_err(|e| format!("Task failed: {}", e))??;
-        println!("Task {} completed", i);
     }
 
-    println!("All tasks completed for file: {}", file.rfilename);
     // 完成下载
     download_manager.finish_file(&file.rfilename).await;
 
