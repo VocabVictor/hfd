@@ -126,6 +126,7 @@ pub async fn download_small_file(
         .map_err(|e| format!("Failed to download file: {}", e))?;
 
     println!("Downloaded {} bytes for {}", bytes.len(), file.rfilename);
+    println!("Current progress position: {}", pb.position());
 
     // 写入文件
     output_file.write_all(&bytes)
@@ -135,10 +136,19 @@ pub async fn download_small_file(
     // 更新进度条到完成状态（移到文件写入之后）
     let bytes_len = bytes.len() as u64;
     if bytes_len > 0 {
-        pb.set_position(downloaded_size + bytes_len);
+        let new_position = downloaded_size + bytes_len;
+        println!("Updating progress to: {}", new_position);
+        pb.set_position(new_position);
+        
+        // 如果有父进度条，也需要更新
+        if let Some(ref parent_pb) = parent_pb {
+            parent_pb.inc(bytes_len);
+        }
     } else {
         println!("Warning: Downloaded 0 bytes for {}", file.rfilename);
     }
+
+    println!("Final progress position: {}", pb.position());
 
     if parent_pb.is_none() {
         println!("✓ Downloaded {}", file.rfilename);
