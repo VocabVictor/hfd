@@ -74,17 +74,12 @@ pub async fn download_small_file(
 
     // 获取文件总大小
     let total_size = if let Some(size) = file.size {
-        println!("Using file.size: {}", size);
         size
     } else if let Some(content_length) = response.content_length() {
-        println!("Using content_length: {}", content_length + downloaded_size);
         content_length + downloaded_size
     } else {
-        println!("Could not determine file size");
         return Err("Could not determine file size".to_string());
     };
-
-    println!("Total size for {}: {} bytes", file.rfilename, total_size);
 
     // 如果没有父进度条，创建一个新的进度条
     let pb = if let Some(ref pb) = parent_pb {
@@ -97,7 +92,6 @@ pub async fn download_small_file(
             .progress_chars("#>-"));
         pb.set_message(format!("Downloading {}", file.rfilename));
         pb.enable_steady_tick(Duration::from_millis(100));
-        // 设置初始位置为已下载的大小
         pb.set_position(downloaded_size);
         pb
     };
@@ -125,36 +119,22 @@ pub async fn download_small_file(
         .await
         .map_err(|e| format!("Failed to download file: {}", e))?;
 
-    println!("Downloaded {} bytes for {}", bytes.len(), file.rfilename);
-    println!("Current progress position: {}", pb.position());
-
     // 写入文件
     output_file.write_all(&bytes)
         .await
         .map_err(|e| format!("Failed to write file: {}", e))?;
 
-    // 更新进度条到完成状态（移到文件写入之后）
+    // 更新进度条到完成状态
     let bytes_len = bytes.len() as u64;
     if bytes_len > 0 {
         let new_position = downloaded_size + bytes_len;
-        println!("Updating progress to: {}", new_position);
         pb.set_position(new_position);
-        pb.tick();  // 强制刷新进度条
+        pb.tick();
         
-        // 如果有父进度条，也需要更新
         if let Some(ref parent_pb) = parent_pb {
             parent_pb.inc(bytes_len);
-            parent_pb.tick();  // 强制刷新父进度条
+            parent_pb.tick();
         }
-    } else {
-        println!("Warning: Downloaded 0 bytes for {}", file.rfilename);
-    }
-
-    println!("Final progress position: {}", pb.position());
-    
-    // 完成下载后，确保进度条显示完成状态
-    if parent_pb.is_none() {
-        pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
     }
 
     Ok(())
