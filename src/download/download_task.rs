@@ -9,8 +9,6 @@ use tokio::fs;
 use crate::download::chunk::download_chunked_file;
 use crate::download::DownloadManager;
 use crate::INTERRUPT_FLAG;
-use std::sync::Arc;
-use crate::config::Config;
 
 pub async fn download_small_file(
     client: &Client,
@@ -26,6 +24,7 @@ pub async fn download_small_file(
     if let Some(size) = file.size {
         if let Ok(metadata) = tokio::fs::metadata(path).await {
             if metadata.len() >= size {
+                println!("File {} is already downloaded.", file.rfilename);
                 return Ok(());
             }
         }
@@ -72,7 +71,7 @@ pub async fn download_small_file(
     };
 
     // 创建进度条
-    let _pb = download_manager.create_progress(file.rfilename.clone(), total_size).await;
+    let _pb = download_manager.create_file_progress(file.rfilename.clone(), total_size).await;
 
     let mut output_file = if downloaded_size > 0 {
         let mut file = tokio::fs::OpenOptions::new()
@@ -105,11 +104,11 @@ pub async fn download_small_file(
     // 更新进度
     let bytes_len = bytes.len() as u64;
     if bytes_len > 0 {
-        download_manager.create_progress(file.rfilename.clone(), bytes_len).await;
+        download_manager.update_progress(&file.rfilename, bytes_len).await;
     }
 
     // 完成下载
-    download_manager.finish_download(&file.rfilename).await;
+    download_manager.finish_file(&file.rfilename).await;
 
     Ok(())
 }
@@ -119,13 +118,14 @@ pub async fn download_folder(
     endpoint: String,
     model_id: String,
     base_path: PathBuf,
-    _name: String,
+    name: String,
     files: Vec<FileInfo>,
     token: Option<String>,
     is_dataset: bool,
 ) -> PyResult<()> {
     use tokio::select;
 
+    let folder_name = name.clone();
     let folder_path = base_path;
     tokio::fs::create_dir_all(&folder_path)
         .await
@@ -135,6 +135,7 @@ pub async fn download_folder(
     let mut total_download_size = 0;
 
     // 检查需要下载的文件
+    let total_files = files.len();
     let mut downloaded_files = 0;
     for file in &files {
         if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
@@ -149,12 +150,14 @@ pub async fn download_folder(
                 need_download_files.push(file.clone());
             } else {
                 downloaded_files += 1;
+                println!("File {} is already downloaded.", file.rfilename);
             }
         }
     }
 
     // 如果所有文件都已下载完成，直接返回
     if need_download_files.is_empty() {
+        println!("All {} files in folder {} are already downloaded.", total_files, folder_name);
         return Ok(());
     }
 
@@ -162,8 +165,7 @@ pub async fn download_folder(
             downloaded_files, need_download_files.len(), total_download_size);
 
     // 创建下载管理器
-    let config = Arc::new(Config::default());
-    let download_manager = Arc::new(DownloadManager::new(config));
+    let download_manager = DownloadManager::new(total_download_size, crate::config::Config::default());
 
     // 创建一个中断检测任务
     let interrupt_task = tokio::spawn(async move {
@@ -189,7 +191,18 @@ pub async fn download_folder(
 
             let task = tokio::spawn(async move {
                 if file.size.unwrap_or(0) > download_manager.get_config().parallel_download_threshold {
-                    download_chunked_file(&file, &client, download_manager).await
+                    download_chunked_file(
+                        &client,
+                        &file,
+                        &file_path,
+                        download_manager.get_config().chunk_size,
+                        download_manager.get_config().max_retries,
+                        token,
+                        &endpoint,
+                        &model_id,
+                        is_dataset,
+                        &download_manager,
+                    ).await
                 } else {
                     download_small_file(
                         &client,
@@ -211,7 +224,7 @@ pub async fn download_folder(
             task.await.map_err(|e| format!("Task failed: {}", e))??;
         }
 
-        Ok::<_, String>(())
+        Ok::<_, String>(())  // 明确指定返回类型
     };
 
     // 使用 select! 等待任务完成或中断
@@ -237,18 +250,4 @@ async fn get_downloaded_size(path: &PathBuf) -> u64 {
     } else {
         0
     }
-}
-
-pub async fn download_file(
-    file: FileInfo,
-    config: Arc<Config>,
-) -> Result<(), String> {
-    let client = Client::new();
-    let download_manager = Arc::new(DownloadManager::new(config));
-    
-    let _progress = download_manager.create_progress(file.rfilename.clone(), file.size.unwrap_or(0)).await;
-    
-    download_chunked_file(&file, &client, download_manager.clone()).await?;
-    
-    Ok(())
 } 

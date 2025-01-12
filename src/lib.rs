@@ -2,7 +2,6 @@ use pyo3::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use lazy_static::lazy_static;
-use tokio::runtime::Runtime;
 
 lazy_static! {
     pub static ref INTERRUPT_FLAG: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
@@ -12,9 +11,9 @@ mod auth;
 mod config;
 mod download;
 mod types;
-pub mod cli;
+mod cli;
 
-pub fn setup_interrupt_handler() {
+fn setup_interrupt_handler() {
     let flag = INTERRUPT_FLAG.clone();
     ctrlc::set_handler(move || {
         flag.store(true, Ordering::SeqCst);
@@ -23,22 +22,20 @@ pub fn setup_interrupt_handler() {
 }
 
 #[pyfunction]
-pub fn download_model(
+fn download_file(
     model_id: String,
     local_dir: Option<String>,
-    _include_patterns: Option<Vec<String>>,
-    _exclude_patterns: Option<Vec<String>>,
-    _hf_token: Option<String>,
+    include_patterns: Option<Vec<String>>,
+    exclude_patterns: Option<Vec<String>>,
+    hf_token: Option<String>,
 ) -> PyResult<String> {
-    let rt = Runtime::new()
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create runtime: {}", e)))?;
+    INTERRUPT_FLAG.store(false, Ordering::SeqCst);
+    setup_interrupt_handler();
 
-    let mut config = crate::config::Config::default();
-    if let Some(dir) = local_dir {
-        config.local_dir_base = dir;
-    }
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create runtime: {}", e)))?;
     
-    rt.block_on(crate::cli::download_file(model_id, config))
+    rt.block_on(cli::download_file(model_id, local_dir, include_patterns, exclude_patterns, hf_token))
 }
 
 #[pyfunction]
@@ -50,8 +47,8 @@ fn main() -> PyResult<()> {
 }
 
 #[pymodule]
-fn hfd(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(download_model, m)?)?;
+fn hfd(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(download_file, m)?)?;
     m.add_function(wrap_pyfunction!(main, m)?)?;
     Ok(())
 } 
