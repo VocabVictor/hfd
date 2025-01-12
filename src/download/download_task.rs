@@ -213,6 +213,7 @@ pub async fn download_folder(
     }
 
     if need_download_files.is_empty() {
+        println!("All files in folder {} are already downloaded.", folder_name);
         return Ok(());
     }
 
