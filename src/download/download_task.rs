@@ -22,85 +22,71 @@ pub async fn download_small_file(
     endpoint: &str,
     model_id: &str,
     is_dataset: bool,
-    pb: Option<Arc<ProgressBar>>,
-) -> PyResult<()> {
-    // 检查文件是否已下载
+    parent_pb: Option<Arc<ProgressBar>>,
+) -> Result<(), String> {
+    // 检查文件是否已经下载
     if let Some(size) = file.size {
-        let downloaded_size = get_downloaded_size(path).await;
-        if downloaded_size >= size {
-            println!("✓ File already downloaded: {}", file.rfilename);
-            return Ok(());
+        if let Ok(metadata) = tokio::fs::metadata(path).await {
+            if metadata.len() >= size {
+                return Ok(());
+            }
         }
+    }
 
-        // 创建或使用传入的进度条
-        let pb = if let Some(pb) = pb {
-            pb
-        } else {
-            let pb = Arc::new(ProgressBar::new(size));
-            pb.set_style(ProgressStyle::default_bar()
-                .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
-                .unwrap()
-                .progress_chars("#>-"));
-            pb.set_message(format!("Downloading {}", file.rfilename));
-            pb.enable_steady_tick(Duration::from_millis(100));
-            pb
-        };
-
-        // 确保父目录存在
-        if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
-        }
-
-        let url = if is_dataset {
-            format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
-        } else {
-            format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
-        };
-
-        let mut request = client.get(&url);
-        if let Some(ref token) = token {
-            request = request.header("Authorization", format!("Bearer {}", token));
-        }
-
-        // 获取已下载的大小
-        if downloaded_size > 0 {
-            request = request.header("Range", format!("bytes={}-", downloaded_size));
-        }
-
-        let response = request.send()
+    // 确保父目录存在
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent)
             .await
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to download file: {}", e)))?;
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
 
-        let mut output_file = if downloaded_size > 0 {
-            let mut file = tokio::fs::OpenOptions::new()
-                .write(true)
-                .open(path)
-                .await
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to open file: {}", e)))?;
-            
-            file.seek(SeekFrom::Start(downloaded_size))
-                .await
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to seek: {}", e)))?;
-            
-            file
-        } else {
-            tokio::fs::File::create(path)
-                .await
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create file: {}", e)))?
-        };
+    let url = if is_dataset {
+        format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+    } else {
+        format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+    };
 
-        let mut stream = response.bytes_stream();
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to download chunk: {}", e)))?;
-            output_file.write_all(&chunk)
-                .await
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to write chunk: {}", e)))?;
+    let mut request = client.get(&url);
+    if let Some(ref token) = token {
+        request = request.header("Authorization", format!("Bearer {}", token));
+    }
+
+    // 获取已下载的大小
+    if let Ok(metadata) = tokio::fs::metadata(path).await {
+        if metadata.len() > 0 {
+            request = request.header("Range", format!("bytes={}-", metadata.len()));
+        }
+    }
+
+    let response = request.send()
+        .await
+        .map_err(|e| format!("Failed to download file: {}", e))?;
+
+    let mut output_file = if let Ok(metadata) = tokio::fs::metadata(path).await {
+        let mut file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .open(path)
+            .await
+            .map_err(|e| format!("Failed to open file: {}", e))?;
+        
+        file.seek(SeekFrom::Start(metadata.len()))
+            .await
+            .map_err(|e| format!("Failed to seek: {}", e))?;
+        
+        file
+    } else {
+        tokio::fs::File::create(path)
+            .await
+            .map_err(|e| format!("Failed to create file: {}", e))?
+    };
+
+    let mut stream = response.bytes_stream();
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result.map_err(|e| format!("Failed to download chunk: {}", e))?;
+        output_file.write_all(&chunk).await.map_err(|e| format!("Failed to write chunk: {}", e))?;
+        if let Some(pb) = &parent_pb {
             pb.inc(chunk.len() as u64);
         }
-
-        pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
     }
 
     Ok(())
@@ -116,20 +102,33 @@ pub async fn download_chunked_file(
     endpoint: &str,
     model_id: &str,
     is_dataset: bool,
-    pb: Option<Arc<ProgressBar>>,
-) -> PyResult<()> {
-    // 检查文件是否已下载
-    if let Some(size) = file.size {
-        let downloaded_size = get_downloaded_size(path).await;
-        if downloaded_size >= size {
-            println!("✓ File already downloaded: {}", file.rfilename);
-            return Ok(());
-        }
+    parent_pb: Option<Arc<ProgressBar>>,
+) -> Result<(), String> {
+    let size = file.size.ok_or("File size is required for chunked download")?;
 
-        // 创建或使用传入的进度条
-        let pb = if let Some(pb) = pb {
-            pb
-        } else {
+    // 确保父目录存在
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+
+    let url = if is_dataset {
+        format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+    } else {
+        format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+    };
+
+    let running = Arc::new(AtomicBool::new(true));
+    download_file_with_chunks(
+        client,
+        url,
+        path.clone(),
+        size,
+        chunk_size,
+        max_retries,
+        token,
+        parent_pb.unwrap_or_else(|| {
             let pb = Arc::new(ProgressBar::new(size));
             pb.set_style(ProgressStyle::default_bar()
                 .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
@@ -138,40 +137,9 @@ pub async fn download_chunked_file(
             pb.set_message(format!("Downloading {}", file.rfilename));
             pb.enable_steady_tick(Duration::from_millis(100));
             pb
-        };
-
-        // 确保父目录存在
-        if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create directory: {}", e)))?;
-        }
-
-        let url = if is_dataset {
-            format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
-        } else {
-            format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
-        };
-
-        let running = Arc::new(AtomicBool::new(true));
-        
-        // Use chunked download
-        if let Err(e) = super::chunk::download_file_with_chunks(
-            client,
-            url.clone(),
-            path.clone(),
-            size,
-            chunk_size,
-            max_retries,
-            token,
-            pb,
-            running,
-        ).await {
-            return Err(pyo3::exceptions::PyRuntimeError::new_err(e));
-        }
-    }
-
-    Ok(())
+        }),
+        running.clone(),
+    ).await
 }
 
 pub async fn download_folder(
@@ -207,7 +175,7 @@ pub async fn download_folder(
             if downloaded_size >= size {
                 println!("✓ File already downloaded: {}/{}", folder_name, file.rfilename);
             } else {
-                total_download_size += size - downloaded_size;  // 只计算需要下载的部分
+                total_download_size += size - downloaded_size;
                 need_download_files.push(file.clone());
             }
         }
@@ -220,33 +188,24 @@ pub async fn download_folder(
 
     println!("Need to download {} files, total size: {} bytes", need_download_files.len(), total_download_size);
 
-    let pb = Arc::new(ProgressBar::new(total_download_size));
-    pb.set_style(ProgressStyle::default_bar()
-        .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
-        .unwrap()
-        .progress_chars("#>-"));
-    pb.set_message(format!("Downloading folder {}", folder_name));
-    pb.enable_steady_tick(Duration::from_millis(100));
-
+    // 将文件分为大文件和小文件
     let (large_files, small_files): (Vec<_>, Vec<_>) = need_download_files
         .into_iter()
         .partition(|file| file.size.map_or(false, |size| size > DEFAULT_CHUNK_SIZE as u64));
 
     let mut tasks = Vec::new();
-    let max_concurrent_small_files = 3;  // 减少并发数，避免进度显示混乱
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_small_files));
+    let max_concurrent_files = 3;  // 文件夹内的并发下载数
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_files));
 
-    // 处理小文件
+    // 处理小文件 - 并发下载
     for file in small_files {
         if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
-            pb.abandon_with_message("Download interrupted by user");
             return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
         }
 
         let file_path = folder_path.join(&file.rfilename);
         let client = client.clone();
         let token = token.clone();
-        let pb = pb.clone();
         let permit = semaphore.clone();
         let endpoint = endpoint.clone();
         let model_id = model_id.clone();
@@ -262,7 +221,7 @@ pub async fn download_folder(
                 &endpoint,
                 &model_id,
                 is_dataset,
-                Some(pb),
+                None,
             ).await;
             if result.is_ok() {
                 println!("Completed download of {}", file.rfilename);
@@ -271,21 +230,21 @@ pub async fn download_folder(
         }));
     }
 
-    // 处理大文件
+    // 处理大文件 - 每个文件内部使用分块并发下载
     for file in large_files {
         if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
-            pb.abandon_with_message("Download interrupted by user");
             return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
         }
 
         let file_path = folder_path.join(&file.rfilename);
         let client = client.clone();
         let token = token.clone();
-        let pb = pb.clone();
+        let permit = semaphore.clone();
         let endpoint = endpoint.clone();
         let model_id = model_id.clone();
 
         tasks.push(tokio::spawn(async move {
+            let _permit = permit.acquire().await.unwrap();
             println!("Starting download of {}", file.rfilename);
             let result = download_chunked_file(
                 &client,
@@ -297,7 +256,7 @@ pub async fn download_folder(
                 &endpoint,
                 &model_id,
                 is_dataset,
-                Some(pb),
+                None,
             ).await;
             if result.is_ok() {
                 println!("Completed download of {}", file.rfilename);
@@ -309,13 +268,12 @@ pub async fn download_folder(
     // 等待所有任务完成
     for task in tasks {
         if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
-            pb.abandon_with_message("Download interrupted by user");
             return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
         }
         task.await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Task failed: {}", e)))??;
     }
 
-    pb.finish_with_message(format!("✓ Downloaded folder {}", folder_name));
+    println!("✓ Downloaded folder {}", folder_name);
     Ok(())
 }
 
@@ -327,5 +285,44 @@ async fn get_downloaded_size(path: &PathBuf) -> u64 {
         }
     } else {
         0
+    }
+}
+
+// 单文件下载入口
+pub async fn download_single_file(
+    client: &Client,
+    file: &FileInfo,
+    path: &PathBuf,
+    token: Option<String>,
+    endpoint: &str,
+    model_id: &str,
+    is_dataset: bool,
+) -> Result<(), String> {
+    // 如果是大文件，使用分块并发下载
+    if file.size.map_or(false, |size| size > DEFAULT_CHUNK_SIZE as u64) {
+        download_chunked_file(
+            client,
+            file,
+            path,
+            DEFAULT_CHUNK_SIZE,
+            DEFAULT_MAX_RETRIES,
+            token,
+            endpoint,
+            model_id,
+            is_dataset,
+            None,
+        ).await
+    } else {
+        // 小文件直接下载
+        download_small_file(
+            client,
+            file,
+            path,
+            token,
+            endpoint,
+            model_id,
+            is_dataset,
+            None,
+        ).await
     }
 } 
