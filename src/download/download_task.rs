@@ -128,12 +128,13 @@ pub async fn download_small_file(
     let bytes_len = bytes.len() as u64;
     if bytes_len > 0 {
         let new_position = downloaded_size + bytes_len;
-        pb.set_position(new_position);
-        pb.tick();
-        
         if let Some(ref parent_pb) = parent_pb {
             parent_pb.inc(bytes_len);
             parent_pb.tick();
+        } else {
+            pb.set_position(new_position);
+            pb.tick();
+            pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
         }
     }
 
@@ -223,12 +224,8 @@ pub async fn download_chunked_file(
         return Err("Download interrupted by user".to_string());
     }
 
-    if parent_pb.is_none() {
-        if result.is_ok() {
-            println!("✓ Downloaded {}", file.rfilename);
-        } else {
-            println!("Failed to download {}", file.rfilename);
-        }
+    if parent_pb.is_none() && result.is_ok() {
+        pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
     }
 
     result
