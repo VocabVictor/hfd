@@ -134,7 +134,6 @@ pub async fn download_folder(
     let mut total_download_size = 0;
 
     // 检查需要下载的文件
-    let total_files = files.len();
     let mut downloaded_files = 0;
     for file in &files {
         if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
