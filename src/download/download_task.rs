@@ -32,7 +32,7 @@ pub async fn download_small_file(
     if let Some(size) = file.size {
         if let Ok(metadata) = tokio::fs::metadata(path).await {
             if metadata.len() >= size {
-                if let Some(pb) = parent_pb {
+                if let Some(ref pb) = parent_pb {
                     pb.set_position(pb.position() + size);
                 }
                 println!("File {} is already downloaded.", file.rfilename);
@@ -82,8 +82,8 @@ pub async fn download_small_file(
     };
 
     // 如果没有父进度条，创建一个新的进度条
-    let pb = if let Some(pb) = parent_pb {
-        pb
+    let pb = if let Some(ref pb) = parent_pb {
+        pb.clone()
     } else {
         let pb = Arc::new(ProgressBar::new(total_size));
         pb.set_style(ProgressStyle::default_bar()
@@ -154,7 +154,7 @@ pub async fn download_chunked_file(
     // 检查文件是否已经下载
     if let Ok(metadata) = tokio::fs::metadata(path).await {
         if metadata.len() >= size {
-            if let Some(pb) = parent_pb {
+            if let Some(ref pb) = parent_pb {
                 pb.set_position(pb.position() + size);
             }
             println!("File {} is already downloaded.", file.rfilename);
@@ -187,8 +187,8 @@ pub async fn download_chunked_file(
     });
 
     // 如果没有父进度条，创建一个新的进度条
-    let pb = if let Some(pb) = parent_pb {
-        pb
+    let pb = if let Some(ref pb) = parent_pb {
+        pb.clone()
     } else {
         let pb = Arc::new(ProgressBar::new(size));
         pb.set_style(ProgressStyle::default_bar()
