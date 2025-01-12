@@ -111,12 +111,13 @@ pub async fn download_file_with_chunks(
                     Ok(response) => {
                         // 检查响应状态码
                         if !response.status().is_success() {
-                            println!("Error: Server returned status code: {}", response.status());
+                            let status = response.status();
+                            println!("Error: Server returned status code: {}", status);
                             let error_text = response.text().await.unwrap_or_default();
                             println!("Error response: {}", error_text);
                             retries += 1;
                             if retries >= max_retries {
-                                return Err(format!("Server error {} after {} retries", response.status(), max_retries));
+                                return Err(format!("Server error {} after {} retries", status, max_retries));
                             }
                             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                             continue;
