@@ -53,7 +53,7 @@ fn default_concurrent_downloads() -> usize {
 }
 
 fn default_connections_per_download() -> usize {
-    8
+    3
 }
 
 fn default_parallel_download_threshold() -> u64 {
