@@ -97,7 +97,6 @@ pub async fn download_chunked_file(
         let permit = match semaphore.clone().try_acquire_owned() {
             Ok(permit) => permit,
             Err(_) => {
-                println!("No available permits, waiting...");
                 // 等待一个任务完成后继续
                 tokio::time::sleep(Duration::from_millis(100)).await;
                 continue;
@@ -184,7 +183,6 @@ pub async fn download_chunked_file(
                                                 let elapsed = now.duration_since(*last).as_secs_f64();
                                                 if elapsed > 0.0 {
                                                     let speed = bytes as f64 / elapsed;
-                                                    println!("Speed: {:.2} MiB/s", speed / 1024.0 / 1024.0);
                                                 }
                                                 *last = now;
                                             }
