@@ -160,13 +160,26 @@ pub async fn download_folder(
     println!("Found {} already downloaded files, downloading remaining {} files, total size: {} bytes",
             downloaded_files, need_download_files.len(), total_download_size);
 
-    // 创建下载管理器 - 使用实际的文件夹名
-    let folder_display_name = if let Some(first_file) = need_download_files.first() {
-        first_file.rfilename.split('/').next().unwrap_or(&folder_name).to_string()
+    // 检查是否所有文件都在同一个子文件夹中
+    let is_subfolder_download = if let Some(first_file) = need_download_files.first() {
+        // 检查文件路径中是否包含斜杠（表示在子文件夹中）
+        first_file.rfilename.contains('/')
     } else {
-        folder_name.clone()
+        false
     };
-    let download_manager = DownloadManager::new_folder(total_download_size, folder_display_name, crate::config::Config::default());
+
+    // 创建下载管理器
+    let download_manager = if is_subfolder_download {
+        // 获取子文件夹名称
+        let folder_display_name = if let Some(first_file) = need_download_files.first() {
+            first_file.rfilename.split('/').next().unwrap_or(&folder_name).to_string()
+        } else {
+            folder_name.clone()
+        };
+        DownloadManager::new_folder(total_download_size, folder_display_name, crate::config::Config::default())
+    } else {
+        DownloadManager::new(total_download_size, crate::config::Config::default())
+    };
 
     // 创建一个中断检测任务
     let interrupt_task = tokio::spawn(async move {
