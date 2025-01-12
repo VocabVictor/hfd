@@ -118,12 +118,14 @@ pub async fn download_small_file(
         .await
         .map_err(|e| format!("Failed to download file: {}", e))?;
 
-    // 写入文件并更新进度
+    // 先更新进度条，因为小文件下载和写入几乎是瞬间的
+    let total_downloaded = downloaded_size + bytes.len() as u64;
+    pb.set_position(total_downloaded);
+
+    // 写入文件
     output_file.write_all(&bytes)
         .await
         .map_err(|e| format!("Failed to write file: {}", e))?;
-
-    pb.set_position(downloaded_size + bytes.len() as u64);
 
     if parent_pb.is_none() {
         println!("✓ Downloaded {}", file.rfilename);
