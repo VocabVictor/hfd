@@ -101,6 +101,7 @@ impl ModelDownloader {
                         &self.config.endpoint,
                         model_id,
                         is_dataset,
+                        None,  // 不使用共享进度条
                     ).await?;
                 } else {
                     download_small_file(
@@ -111,6 +112,7 @@ impl ModelDownloader {
                         &self.config.endpoint,
                         model_id,
                         is_dataset,
+                        None,  // 不使用共享进度条
                     ).await?;
                 }
             } else {
@@ -122,6 +124,7 @@ impl ModelDownloader {
                     &self.config.endpoint,
                     model_id,
                     is_dataset,
+                    None,  // 不使用共享进度条
                 ).await?;
             }
         }
