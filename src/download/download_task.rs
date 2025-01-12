@@ -26,6 +26,18 @@ pub async fn download_small_file(
     is_dataset: bool,
     parent_pb: Option<Arc<ProgressBar>>,
 ) -> Result<(), String> {
+    // 检查文件是否已经下载
+    if let Some(size) = file.size {
+        if let Ok(metadata) = tokio::fs::metadata(path).await {
+            if metadata.len() >= size {
+                if let Some(pb) = parent_pb {
+                    pb.inc(size);
+                }
+                return Ok(());
+            }
+        }
+    }
+
     let size = file.size.unwrap_or(0);
 
     // 创建文件自己的进度条
@@ -36,19 +48,6 @@ pub async fn download_small_file(
         .progress_chars("#>-"));
     file_pb.set_message(format!("Downloading {}", file.rfilename));
     file_pb.enable_steady_tick(Duration::from_millis(100));
-
-    // 检查文件是否已经下载
-    if let Some(size) = file.size {
-        if let Ok(metadata) = tokio::fs::metadata(path).await {
-            if metadata.len() >= size {
-                file_pb.finish_with_message(format!("✓ File already exists: {}", file.rfilename));
-                if let Some(pb) = parent_pb {
-                    pb.inc(size);
-                }
-                return Ok(());
-            }
-        }
-    }
 
     // 确保父目录存在
     if let Some(parent) = path.parent() {
@@ -124,6 +123,16 @@ pub async fn download_chunked_file(
 ) -> Result<(), String> {
     let size = file.size.ok_or("File size is required for chunked download")?;
 
+    // 检查文件是否已经下载
+    if let Ok(metadata) = tokio::fs::metadata(path).await {
+        if metadata.len() >= size {
+            if let Some(pb) = parent_pb {
+                pb.inc(size);
+            }
+            return Ok(());
+        }
+    }
+
     // 创建文件自己的进度条
     let file_pb = Arc::new(ProgressBar::new(size));
     file_pb.set_style(ProgressStyle::default_bar()
@@ -193,7 +202,7 @@ pub async fn download_folder(
     let mut need_download_files = Vec::new();
     let mut total_download_size = 0;
 
-    // 首先打印已下载的文件
+    // 检查需要下载的文件
     for file in &files {
         if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
             return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
@@ -202,9 +211,7 @@ pub async fn download_folder(
         let file_path = folder_path.join(&file.rfilename);
         if let Some(size) = file.size {
             let downloaded_size = get_downloaded_size(&file_path).await;
-            if downloaded_size >= size {
-                println!("✓ File already downloaded: {}/{}", folder_name, file.rfilename);
-            } else {
+            if downloaded_size < size {
                 total_download_size += size - downloaded_size;
                 need_download_files.push(file.clone());
             }
@@ -212,11 +219,10 @@ pub async fn download_folder(
     }
 
     if need_download_files.is_empty() {
-        println!("✓ All files in folder {} are already downloaded", folder_name);
         return Ok(());
     }
 
-    println!("Need to download {} files, total size: {} bytes", need_download_files.len(), total_download_size);
+    println!("Downloading {} files, total size: {} bytes", need_download_files.len(), total_download_size);
 
     // 创建文件夹的总进度条
     let total_pb = Arc::new(ProgressBar::new(total_download_size));
