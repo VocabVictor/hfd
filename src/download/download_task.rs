@@ -22,6 +22,7 @@ pub async fn download_small_file(
     endpoint: &str,
     model_id: &str,
     is_dataset: bool,
+    pb: Option<Arc<ProgressBar>>,
 ) -> PyResult<()> {
     // 检查文件是否已下载
     if let Some(size) = file.size {
@@ -31,14 +32,19 @@ pub async fn download_small_file(
             return Ok(());
         }
 
-        // 创建进度条
-        let pb = Arc::new(ProgressBar::new(size));
-        pb.set_style(ProgressStyle::default_bar()
-            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
-            .unwrap()
-            .progress_chars("#>-"));
-        pb.set_message(format!("Downloading {}", file.rfilename));
-        pb.enable_steady_tick(Duration::from_millis(100));
+        // 创建或使用传入的进度条
+        let pb = if let Some(pb) = pb {
+            pb
+        } else {
+            let pb = Arc::new(ProgressBar::new(size));
+            pb.set_style(ProgressStyle::default_bar()
+                .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
+                .unwrap()
+                .progress_chars("#>-"));
+            pb.set_message(format!("Downloading {}", file.rfilename));
+            pb.enable_steady_tick(Duration::from_millis(100));
+            pb
+        };
 
         // 确保父目录存在
         if let Some(parent) = path.parent() {
@@ -110,6 +116,7 @@ pub async fn download_chunked_file(
     endpoint: &str,
     model_id: &str,
     is_dataset: bool,
+    pb: Option<Arc<ProgressBar>>,
 ) -> PyResult<()> {
     // 检查文件是否已下载
     if let Some(size) = file.size {
@@ -119,14 +126,19 @@ pub async fn download_chunked_file(
             return Ok(());
         }
 
-        // 创建进度条
-        let pb = Arc::new(ProgressBar::new(size));
-        pb.set_style(ProgressStyle::default_bar()
-            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
-            .unwrap()
-            .progress_chars("#>-"));
-        pb.set_message(format!("Downloading {}", file.rfilename));
-        pb.enable_steady_tick(Duration::from_millis(100));
+        // 创建或使用传入的进度条
+        let pb = if let Some(pb) = pb {
+            pb
+        } else {
+            let pb = Arc::new(ProgressBar::new(size));
+            pb.set_style(ProgressStyle::default_bar()
+                .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
+                .unwrap()
+                .progress_chars("#>-"));
+            pb.set_message(format!("Downloading {}", file.rfilename));
+            pb.enable_steady_tick(Duration::from_millis(100));
+            pb
+        };
 
         // 确保父目录存在
         if let Some(parent) = path.parent() {
@@ -233,7 +245,7 @@ pub async fn download_folder(
         let file_path = folder_path.join(&file.rfilename);
         let client = client.clone();
         let token = token.clone();
-        let _pb = pb.clone();
+        let pb = pb.clone();
         let permit = semaphore.clone();
         let endpoint = endpoint.clone();
         let model_id = model_id.clone();
@@ -249,6 +261,7 @@ pub async fn download_folder(
                 &endpoint,
                 &model_id,
                 is_dataset,
+                Some(pb),
             ).await;
             if result.is_ok() {
                 println!("Completed download of {}", file.rfilename);
@@ -266,7 +279,7 @@ pub async fn download_folder(
         let file_path = folder_path.join(&file.rfilename);
         let client = client.clone();
         let token = token.clone();
-        let _pb = pb.clone();
+        let pb = pb.clone();
         let endpoint = endpoint.clone();
         let model_id = model_id.clone();
 
@@ -282,6 +295,7 @@ pub async fn download_folder(
                 &endpoint,
                 &model_id,
                 is_dataset,
+                Some(pb),
             ).await;
             if result.is_ok() {
                 println!("Completed download of {}", file.rfilename);
