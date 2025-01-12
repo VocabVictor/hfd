@@ -113,18 +113,17 @@ pub async fn download_small_file(
             .map_err(|e| format!("Failed to create file: {}", e))?
     };
 
-    let mut current_position = downloaded_size;  // 跟踪当前下载位置
-    let mut stream = response.bytes_stream();
-    while let Some(chunk_result) = stream.next().await {
-        if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
-            return Err("Download interrupted by user".to_string());
-        }
+    // 对于小文件，直接下载整个内容
+    let bytes = response.bytes()
+        .await
+        .map_err(|e| format!("Failed to download file: {}", e))?;
 
-        let chunk = chunk_result.map_err(|e| format!("Failed to download chunk: {}", e))?;
-        output_file.write_all(&chunk).await.map_err(|e| format!("Failed to write chunk: {}", e))?;
-        current_position += chunk.len() as u64;
-        pb.set_position(current_position);
-    }
+    // 写入文件并更新进度
+    output_file.write_all(&bytes)
+        .await
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+
+    pb.set_position(downloaded_size + bytes.len() as u64);
 
     if parent_pb.is_none() {
         println!("✓ Downloaded {}", file.rfilename);
