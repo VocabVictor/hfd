@@ -26,6 +26,8 @@ pub async fn download_small_file(
     is_dataset: bool,
     parent_pb: Option<Arc<ProgressBar>>,
 ) -> Result<(), String> {
+    use crate::INTERRUPT_FLAG;
+
     // 检查文件是否已经下载
     if let Some(size) = file.size {
         if let Ok(metadata) = tokio::fs::metadata(path).await {
@@ -87,6 +89,10 @@ pub async fn download_small_file(
 
     let mut stream = response.bytes_stream();
     while let Some(chunk_result) = stream.next().await {
+        if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
+            return Err("Download interrupted by user".to_string());
+        }
+
         let chunk = chunk_result.map_err(|e| format!("Failed to download chunk: {}", e))?;
         output_file.write_all(&chunk).await.map_err(|e| format!("Failed to write chunk: {}", e))?;
         if let Some(pb) = &parent_pb {
@@ -110,6 +116,8 @@ pub async fn download_chunked_file(
     parent_pb: Option<Arc<ProgressBar>>,
     config: &Config,
 ) -> Result<(), String> {
+    use crate::INTERRUPT_FLAG;
+
     let size = file.size.ok_or("File size is required for chunked download")?;
 
     // 检查文件是否已经下载
@@ -136,6 +144,16 @@ pub async fn download_chunked_file(
     };
 
     let running = Arc::new(AtomicBool::new(true));
+
+    // 创建一个监听中断的任务
+    let running_clone = running.clone();
+    tokio::spawn(async move {
+        while !INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        running_clone.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
+
     let result = download_file_with_chunks(
         client,
         url,
@@ -148,6 +166,10 @@ pub async fn download_chunked_file(
         running.clone(),
         config,
     ).await;
+
+    if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err("Download interrupted by user".to_string());
+    }
 
     result
 }
@@ -163,6 +185,7 @@ pub async fn download_folder(
     is_dataset: bool,
 ) -> PyResult<()> {
     use crate::INTERRUPT_FLAG;
+    use tokio::select;
 
     let folder_name = name.clone();
     let folder_path = base_path.join(&name);
@@ -213,17 +236,15 @@ pub async fn download_folder(
     let max_concurrent_files = 3;  // 文件夹内的并发下载数
     let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_files));
 
-    // 创建一个取消标记
-    let cancel = Arc::new(AtomicBool::new(false));
+    // 创建一个中断检测任务
+    let interrupt_task = tokio::spawn(async move {
+        while !INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    });
 
     // 处理小文件 - 并发下载
     for file in small_files {
-        if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
-            cancel.store(true, std::sync::atomic::Ordering::SeqCst);
-            total_pb.abandon_with_message("Download interrupted by user");
-            return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
-        }
-
         let file_path = folder_path.join(&file.rfilename);
         let client = client.clone();
         let token = token.clone();
@@ -231,12 +252,8 @@ pub async fn download_folder(
         let endpoint = endpoint.clone();
         let model_id = model_id.clone();
         let total_pb = total_pb.clone();
-        let cancel = cancel.clone();
 
         tasks.push(tokio::spawn(async move {
-            if cancel.load(std::sync::atomic::Ordering::SeqCst) {
-                return Ok(());
-            }
             let _permit = permit.acquire().await.unwrap();
             let result = download_small_file(
                 &client,
@@ -254,12 +271,6 @@ pub async fn download_folder(
 
     // 处理大文件 - 每个文件内部使用分块并发下载
     for file in large_files {
-        if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
-            cancel.store(true, std::sync::atomic::Ordering::SeqCst);
-            total_pb.abandon_with_message("Download interrupted by user");
-            return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
-        }
-
         let file_path = folder_path.join(&file.rfilename);
         let client = client.clone();
         let token = token.clone();
@@ -267,12 +278,8 @@ pub async fn download_folder(
         let endpoint = endpoint.clone();
         let model_id = model_id.clone();
         let total_pb = total_pb.clone();
-        let cancel = cancel.clone();
 
         tasks.push(tokio::spawn(async move {
-            if cancel.load(std::sync::atomic::Ordering::SeqCst) {
-                return Ok(());
-            }
             let _permit = permit.acquire().await.unwrap();
             let result = download_chunked_file(
                 &client,
@@ -291,29 +298,35 @@ pub async fn download_folder(
         }));
     }
 
-    // 等待所有任务完成
-    for task in tasks {
-        if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
-            cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+    // 使用 select! 等待任务完成或中断
+    let download_task = async {
+        for task in tasks {
+            match task.await {
+                Ok(result) => result?,
+                Err(e) => return Err(pyo3::exceptions::PyRuntimeError::new_err(format!("Task failed: {}", e))),
+            }
+        }
+        Ok(())
+    };
+
+    select! {
+        result = download_task => {
+            match result {
+                Ok(_) => {
+                    total_pb.finish_with_message(format!("✓ Downloaded folder {}", folder_name));
+                    Ok(())
+                },
+                Err(e) => {
+                    total_pb.abandon_with_message("Download failed");
+                    Err(e)
+                }
+            }
+        },
+        _ = interrupt_task => {
             total_pb.abandon_with_message("Download interrupted by user");
-            return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
+            Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"))
         }
-        
-        // 如果已经取消，就不等待任务完成
-        if cancel.load(std::sync::atomic::Ordering::SeqCst) {
-            continue;
-        }
-
-        task.await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Task failed: {}", e)))?;
     }
-
-    if cancel.load(std::sync::atomic::Ordering::SeqCst) {
-        total_pb.abandon_with_message("Download interrupted by user");
-        return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
-    }
-
-    total_pb.finish_with_message(format!("✓ Downloaded folder {}", folder_name));
-    Ok(())
 }
 
 async fn get_downloaded_size(path: &PathBuf) -> u64 {
