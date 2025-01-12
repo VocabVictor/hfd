@@ -9,6 +9,99 @@ use futures::StreamExt;
 use std::time::Duration;
 use crate::INTERRUPT_FLAG;
 use crate::config::Config;
+use crate::types::FileInfo;
+use pyo3::exceptions::PyRuntimeError;
+
+pub async fn download_chunked_file(
+    client: &Client,
+    file: &FileInfo,
+    path: &PathBuf,
+    chunk_size: usize,
+    max_retries: usize,
+    token: Option<String>,
+    endpoint: &str,
+    model_id: &str,
+    is_dataset: bool,
+    parent_pb: Option<Arc<ProgressBar>>,
+    config: &Config,
+) -> Result<(), String> {
+    use crate::INTERRUPT_FLAG;
+
+    let size = file.size.ok_or("File size is required for chunked download")?;
+
+    // 检查文件是否已经下载
+    if let Ok(metadata) = tokio::fs::metadata(path).await {
+        if metadata.len() >= size {
+            if let Some(ref pb) = parent_pb {
+                pb.set_position(pb.position() + size);
+                pb.tick();
+            }
+            println!("File {} is already downloaded.", file.rfilename);
+            return Ok(());
+        }
+    }
+
+    // 确保父目录存在
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+
+    let url = if is_dataset {
+        format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+    } else {
+        format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
+    };
+
+    let running = Arc::new(AtomicBool::new(true));
+
+    // 创建一个监听中断的任务
+    let running_clone = running.clone();
+    tokio::spawn(async move {
+        while !INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        running_clone.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
+
+    // 如果没有父进度条，创建一个新的进度条
+    let pb = if let Some(ref pb) = parent_pb {
+        pb.clone()
+    } else {
+        let pb = Arc::new(ProgressBar::new(size));
+        pb.set_style(ProgressStyle::default_bar()
+            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
+            .unwrap()
+            .progress_chars("#>-"));
+        pb.set_message(format!("Downloading {}", file.rfilename));
+        pb.enable_steady_tick(Duration::from_millis(100));
+        pb
+    };
+
+    let result = download_file_with_chunks(
+        client,
+        url,
+        path.clone(),
+        size,
+        chunk_size,
+        max_retries,
+        token,
+        pb.clone(),
+        running.clone(),
+        config,
+    ).await;
+
+    if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err("Download interrupted by user".to_string());
+    }
+
+    if parent_pb.is_none() && result.is_ok() {
+        pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
+    }
+
+    result
+}
 
 pub async fn download_file_with_chunks(
     client: &Client,
@@ -43,7 +136,8 @@ pub async fn download_file_with_chunks(
 
     // 如果文件已经完全下载，直接返回
     if downloaded_size >= total_size {
-        pb.set_position(total_size);  // 使用set_position替代inc
+        pb.set_position(total_size);
+        pb.tick();
         return Ok(());
     }
 
@@ -59,6 +153,7 @@ pub async fn download_file_with_chunks(
 
     // 设置进度条的初始位置为已下载的大小
     pb.set_position(downloaded_size);
+    pb.tick();
 
     // 创建信号量来限制并发连接数
     let semaphore = Arc::new(tokio::sync::Semaphore::new(config.connections_per_download));
@@ -156,6 +251,7 @@ pub async fn download_file_with_chunks(
                                     // 立即更新总进度和进度条
                                     let new_total = total_downloaded.fetch_add(chunk_len, Ordering::Relaxed) + chunk_len;
                                     pb.set_position(new_total);
+                                    pb.tick();
 
                                     // 更新下载速度统计（每100ms更新一次）
                                     bytes_downloaded.fetch_add(chunk_len, Ordering::Relaxed);

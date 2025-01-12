@@ -10,7 +10,7 @@ use std::io::SeekFrom;
 use futures::StreamExt;
 use std::time::Duration;
 use tokio::fs;
-use crate::download::chunk::download_file_with_chunks;
+use crate::download::chunk::{download_chunked_file};
 use crate::config::Config;
 
 const DEFAULT_CHUNK_SIZE: usize = 16 * 1024 * 1024; // 16MB
@@ -139,96 +139,6 @@ pub async fn download_small_file(
     }
 
     Ok(())
-}
-
-pub async fn download_chunked_file(
-    client: &Client,
-    file: &FileInfo,
-    path: &PathBuf,
-    chunk_size: usize,
-    max_retries: usize,
-    token: Option<String>,
-    endpoint: &str,
-    model_id: &str,
-    is_dataset: bool,
-    parent_pb: Option<Arc<ProgressBar>>,
-    config: &Config,
-) -> Result<(), String> {
-    use crate::INTERRUPT_FLAG;
-
-    let size = file.size.ok_or("File size is required for chunked download")?;
-
-    // 检查文件是否已经下载
-    if let Ok(metadata) = tokio::fs::metadata(path).await {
-        if metadata.len() >= size {
-            if let Some(ref pb) = parent_pb {
-                pb.set_position(pb.position() + size);
-            }
-            println!("File {} is already downloaded.", file.rfilename);
-            return Ok(());
-        }
-    }
-
-    // 确保父目录存在
-    if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(|e| format!("Failed to create directory: {}", e))?;
-    }
-
-    let url = if is_dataset {
-        format!("{}/datasets/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
-    } else {
-        format!("{}/{}/resolve/main/{}", endpoint, model_id, file.rfilename)
-    };
-
-    let running = Arc::new(AtomicBool::new(true));
-
-    // 创建一个监听中断的任务
-    let running_clone = running.clone();
-    tokio::spawn(async move {
-        while !INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-        running_clone.store(false, std::sync::atomic::Ordering::SeqCst);
-    });
-
-    // 如果没有父进度条，创建一个新的进度条
-    let pb = if let Some(ref pb) = parent_pb {
-        pb.clone()
-    } else {
-        let pb = Arc::new(ProgressBar::new(size));
-        pb.set_style(ProgressStyle::default_bar()
-            .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
-            .unwrap()
-            .progress_chars("#>-"));
-        pb.set_message(format!("Downloading {}", file.rfilename));
-        pb.enable_steady_tick(Duration::from_millis(100));
-        pb
-    };
-
-    let result = download_file_with_chunks(
-        client,
-        url,
-        path.clone(),
-        size,
-        chunk_size,
-        max_retries,
-        token,
-        pb.clone(),
-        running.clone(),
-        config,
-    ).await;
-
-    if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
-        return Err("Download interrupted by user".to_string());
-    }
-
-    if parent_pb.is_none() && result.is_ok() {
-        pb.finish_with_message(format!("✓ Downloaded {}", file.rfilename));
-    }
-
-    result
 }
 
 pub async fn download_folder(
