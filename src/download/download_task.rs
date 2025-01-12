@@ -96,6 +96,7 @@ pub async fn download_small_file(
             .unwrap()
             .progress_chars("#>-"));
         pb.set_message(format!("Downloading {}", file.rfilename));
+        pb.enable_steady_tick(Duration::from_millis(100));
         // 设置初始位置为已下载的大小
         pb.set_position(downloaded_size);
         pb
