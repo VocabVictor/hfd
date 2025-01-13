@@ -79,6 +79,14 @@ impl DownloadManager {
     }
 
     pub async fn create_file_progress(&self, filename: String, size: u64) -> Arc<ProgressBar> {
+        // 如果是文件夹下载，返回文件夹进度条
+        if self.is_folder {
+            let folder_progress = self.folder_progress.lock().await;
+            if let Some(pb) = folder_progress.as_ref() {
+                return pb.clone();
+            }
+        }
+
         let mut file_progress = self.file_progress.lock().await;
         
         // 如果进度条已经存在，先移除它
@@ -109,7 +117,7 @@ impl DownloadManager {
 
     pub async fn update_progress(&self, filename: &str, bytes: u64) {
         if self.is_folder {
-            // 如果是文件夹下载，更新文件夹总进度条
+            // 如果是文件夹下载，只更新文件夹总进度条
             let folder_progress = self.folder_progress.lock().await;
             if let Some(pb) = folder_progress.as_ref() {
                 pb.inc(bytes);
@@ -166,16 +174,16 @@ impl DownloadManager {
     }
 
     pub async fn cleanup(&self) {
-        // 清理所有进度条
-        let mut file_progress = self.file_progress.lock().await;
-        for (_, pb) in file_progress.drain() {
-            pb.finish_and_clear();
-        }
-
-        // 清理文件夹进度条
         if self.is_folder {
+            // 如果是文件夹下载，只清理文件夹进度条
             let mut folder_progress = self.folder_progress.lock().await;
             if let Some(pb) = folder_progress.take() {
+                pb.finish_and_clear();
+            }
+        } else {
+            // 清理所有单文件进度条
+            let mut file_progress = self.file_progress.lock().await;
+            for (_, pb) in file_progress.drain() {
                 pb.finish_and_clear();
             }
         }
@@ -188,9 +196,18 @@ impl DownloadManager {
     }
 
     pub async fn handle_interrupt(&self, filename: &str) {
-        let mut file_progress = self.file_progress.lock().await;
-        if let Some(pb) = file_progress.get(filename) {
-            pb.abandon_with_message(format!("⚠ Interrupted: {}", filename));
+        if self.is_folder {
+            // 如果是文件夹下载，处理文件夹进度条
+            let folder_progress = self.folder_progress.lock().await;
+            if let Some(pb) = folder_progress.as_ref() {
+                pb.abandon_with_message("⚠ Download interrupted");
+            }
+        } else {
+            // 处理单文件进度条
+            let file_progress = self.file_progress.lock().await;
+            if let Some(pb) = file_progress.get(filename) {
+                pb.abandon_with_message(format!("⚠ Interrupted: {}", filename));
+            }
         }
     }
 
