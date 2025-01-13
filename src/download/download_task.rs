@@ -186,8 +186,11 @@ pub async fn download_folder(
         };
         DownloadManager::new_folder(total_download_size, folder_display_name, crate::config::Config::default())
     } else {
-        DownloadManager::new(total_download_size, crate::config::Config::default())
+        DownloadManager::new_folder(total_download_size, folder_name.clone(), crate::config::Config::default())
     };
+
+    // 创建一个初始的进度条，确保它存在
+    let _ = download_manager.create_file_progress("".to_string(), total_download_size).await;
 
     let download_task = async {
         let mut tasks = Vec::new();
