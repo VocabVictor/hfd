@@ -144,6 +144,7 @@ pub async fn download_folder(
 
     let mut need_download_files = Vec::new();
     let mut total_download_size = 0;
+    let mut downloaded_size = 0;
 
     // 检查需要下载的文件
     let mut downloaded_files = 0;
@@ -151,6 +152,7 @@ pub async fn download_folder(
         let file_path = folder_path.join(&file.rfilename);
         if let Some(size) = file.size {
             let file_downloaded_size = get_downloaded_size(&file_path).await;
+            downloaded_size += file_downloaded_size;
             if file_downloaded_size < size {
                 total_download_size += size - file_downloaded_size;
                 need_download_files.push(file.clone());
@@ -184,13 +186,14 @@ pub async fn download_folder(
         } else {
             folder_name.clone()
         };
-        DownloadManager::new_folder(total_download_size, folder_display_name, crate::config::Config::default())
+        DownloadManager::new_folder(total_download_size + downloaded_size, folder_display_name, crate::config::Config::default())
     } else {
-        DownloadManager::new_folder(total_download_size, folder_name.clone(), crate::config::Config::default())
+        DownloadManager::new_folder(total_download_size + downloaded_size, folder_name.clone(), crate::config::Config::default())
     };
 
-    // 创建一个初始的进度条，确保它存在
-    let _ = download_manager.create_file_progress("".to_string(), total_download_size).await;
+    // 设置已下载的大小
+    let pb = download_manager.create_file_progress("".to_string(), total_download_size + downloaded_size).await;
+    pb.inc(downloaded_size);
 
     let download_task = async {
         let mut tasks = Vec::new();

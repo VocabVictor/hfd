@@ -57,6 +57,11 @@ impl DownloadManager {
         pb.set_message(format!("Downloading folder {}", folder_name));
         pb.enable_steady_tick(Duration::from_millis(100));
         
+        // 如果是断点续传，设置已下载的大小
+        if total_size > 0 {
+            pb.set_position(0);
+        }
+        
         Self {
             multi_progress,
             file_progress: Arc::new(Mutex::new(HashMap::new())),
@@ -85,21 +90,19 @@ impl DownloadManager {
             .expect(&format!("Progress bar not found for file: {}", _filename))
     }
 
-    pub async fn create_file_progress(&self, filename: String, size: u64) -> Arc<ProgressBar> {
+    pub async fn create_file_progress(&self, _filename: String, size: u64) -> Arc<ProgressBar> {
         // 如果是文件夹下载，返回文件夹进度条
         if self.is_folder {
             let folder_progress = self.folder_progress.lock().await;
-            if let Some(pb) = folder_progress.as_ref() {
-                return pb.clone();
-            }
-            // 如果没有找到文件夹进度条，这是一个错误状态
-            panic!("Folder progress bar not found in folder download mode");
+            return folder_progress.as_ref()
+                .map(|pb| pb.clone())
+                .expect("Folder progress bar not found in folder download mode");
         }
 
         let mut file_progress = self.file_progress.lock().await;
         
         // 如果进度条已经存在，先移除它
-        if let Some(old_pb) = file_progress.remove(&filename) {
+        if let Some(old_pb) = file_progress.remove(&_filename) {
             old_pb.finish_and_clear();
         }
 
@@ -108,11 +111,11 @@ impl DownloadManager {
             .template("[{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({binary_bytes_per_sec}) {msg}")
             .unwrap()
             .progress_chars("#>-"));
-        pb.set_message(format!("Downloading {}", filename));
+        pb.set_message(format!("Downloading {}", _filename));
         pb.enable_steady_tick(Duration::from_millis(100));
 
         let task = DownloadTask {
-            filename: filename.clone(),
+            filename: _filename.clone(),
             size,
             progress: pb.clone(),
         };
@@ -120,7 +123,7 @@ impl DownloadManager {
         let mut queue = self.download_queue.lock().await;
         queue.push_back(task);
 
-        file_progress.insert(filename.clone(), pb.clone());
+        file_progress.insert(_filename.clone(), pb.clone());
         pb
     }
 
