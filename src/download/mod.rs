@@ -70,6 +70,15 @@ impl DownloadManager {
     }
 
     pub async fn get_progress(&self, filename: &str) -> Arc<ProgressBar> {
+        // 如果是文件夹下载，返回文件夹进度条
+        if self.is_folder {
+            let folder_progress = self.folder_progress.lock().await;
+            if let Some(pb) = folder_progress.as_ref() {
+                return pb.clone();
+            }
+        }
+
+        // 对于单文件下载，返回对应的进度条
         let file_progress = self.file_progress.lock().await;
         if let Some(pb) = file_progress.get(filename) {
             pb.clone()
@@ -85,6 +94,8 @@ impl DownloadManager {
             if let Some(pb) = folder_progress.as_ref() {
                 return pb.clone();
             }
+            // 如果没有找到文件夹进度条，这是一个错误状态
+            panic!("Folder progress bar not found in folder download mode");
         }
 
         let mut file_progress = self.file_progress.lock().await;
@@ -195,29 +206,38 @@ impl DownloadManager {
         active_downloads.clear();
     }
 
-    pub async fn handle_interrupt(&self, filename: &str) {
+    pub async fn handle_interrupt(&self, _filename: &str) {
+        // 在文件夹下载模式下，所有中断都通过文件夹进度条处理
         if self.is_folder {
-            // 如果是文件夹下载，处理文件夹进度条
             let folder_progress = self.folder_progress.lock().await;
             if let Some(pb) = folder_progress.as_ref() {
                 pb.abandon_with_message("⚠ Download interrupted");
             }
-        } else {
-            // 处理单文件进度条
-            let file_progress = self.file_progress.lock().await;
-            if let Some(pb) = file_progress.get(filename) {
-                pb.abandon_with_message(format!("⚠ Interrupted: {}", filename));
-            }
+            self.cleanup().await;
+            return;
+        }
+
+        // 处理单文件进度条
+        let file_progress = self.file_progress.lock().await;
+        if let Some(pb) = file_progress.get(_filename) {
+            pb.abandon_with_message(format!("⚠ Interrupted: {}", _filename));
         }
     }
 
     pub async fn handle_folder_interrupt(&self) {
-        if self.is_folder {
-            let folder_progress = self.folder_progress.lock().await;
-            if let Some(pb) = folder_progress.as_ref() {
-                pb.abandon_with_message("⚠ Download interrupted");
-            }
+        // 确保在文件夹下载模式下
+        if !self.is_folder {
+            return;
         }
+
+        // 处理文件夹进度条
+        let folder_progress = self.folder_progress.lock().await;
+        if let Some(pb) = folder_progress.as_ref() {
+            pb.abandon_with_message("⚠ Download interrupted");
+        }
+
+        // 清理所有资源
+        drop(folder_progress); // 先释放锁，避免死锁
         self.cleanup().await;
     }
 
