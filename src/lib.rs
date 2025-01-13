@@ -1,22 +1,34 @@
 use pyo3::prelude::*;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use lazy_static::lazy_static;
-
-lazy_static! {
-    pub static ref INTERRUPT_FLAG: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-}
+use tokio::sync::broadcast;
 
 mod config;
 mod download;
 mod types;
 mod cli;
 
-fn setup_interrupt_handler() {
-    let flag = INTERRUPT_FLAG.clone();
+pub struct ShutdownHandle {
+    tx: broadcast::Sender<()>,
+}
+
+impl ShutdownHandle {
+    pub fn new() -> Self {
+        let (tx, _) = broadcast::channel(1);
+        Self { tx }
+    }
+
+    pub fn subscribe(&self) -> broadcast::Receiver<()> {
+        self.tx.subscribe()
+    }
+
+    pub fn shutdown(&self) {
+        let _ = self.tx.send(());
+    }
+}
+
+fn setup_interrupt_handler(handle: ShutdownHandle) {
     ctrlc::set_handler(move || {
-        flag.store(true, Ordering::SeqCst);
         println!("\nReceived Ctrl+C, interrupting downloads...");
+        handle.shutdown();
     }).expect("Error setting Ctrl+C handler");
 }
 
@@ -28,19 +40,19 @@ fn download_file(
     exclude_patterns: Option<Vec<String>>,
     hf_token: Option<String>,
 ) -> PyResult<String> {
-    INTERRUPT_FLAG.store(false, Ordering::SeqCst);
-    setup_interrupt_handler();
+    let handle = ShutdownHandle::new();
+    setup_interrupt_handler(handle.clone());
 
     let rt = tokio::runtime::Runtime::new()
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create runtime: {}", e)))?;
     
-    rt.block_on(cli::download_file(model_id, local_dir, include_patterns, exclude_patterns, hf_token))
+    rt.block_on(cli::download_file(model_id, local_dir, include_patterns, exclude_patterns, hf_token, handle))
 }
 
 #[pyfunction]
 fn main() -> PyResult<()> {
-    INTERRUPT_FLAG.store(false, Ordering::SeqCst);
-    setup_interrupt_handler();
+    let handle = ShutdownHandle::new();
+    setup_interrupt_handler(handle.clone());
     
     cli::run_cli()
 }

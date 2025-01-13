@@ -19,6 +19,7 @@ pub async fn download_small_file(
     model_id: &str,
     is_dataset: bool,
     download_manager: &DownloadManager,
+    mut shutdown: tokio::sync::broadcast::Receiver<()>,
 ) -> Result<(), String> {
     // 检查文件是否已经下载
     if let Some(size) = file.size {
@@ -90,26 +91,37 @@ pub async fn download_small_file(
             .map_err(|e| format!("Failed to create file: {}", e))?
     };
 
-    // 对于小文件，直接下载整个内容
-    let bytes = response.bytes()
-        .await
-        .map_err(|e| format!("Failed to download file: {}", e))?;
+    let download_task = async {
+        // 对于小文件，直接下载整个内容
+        let bytes = response.bytes()
+            .await
+            .map_err(|e| format!("Failed to download file: {}", e))?;
 
-    // 写入文件
-    output_file.write_all(&bytes)
-        .await
-        .map_err(|e| format!("Failed to write file: {}", e))?;
+        // 写入文件
+        output_file.write_all(&bytes)
+            .await
+            .map_err(|e| format!("Failed to write file: {}", e))?;
 
-    // 更新进度
-    let bytes_len = bytes.len() as u64;
-    if bytes_len > 0 {
-        download_manager.update_progress(&file.rfilename, bytes_len).await;
+        // 更新进度
+        let bytes_len = bytes.len() as u64;
+        if bytes_len > 0 {
+            download_manager.update_progress(&file.rfilename, bytes_len).await;
+        }
+
+        Ok::<_, String>(())
+    };
+
+    tokio::select! {
+        result = download_task => {
+            result?;
+            // 完成下载
+            download_manager.finish_file(&file.rfilename).await;
+            Ok(())
+        }
+        _ = shutdown.recv() => {
+            Err("Download interrupted by user".to_string())
+        }
     }
-
-    // 完成下载
-    download_manager.finish_file(&file.rfilename).await;
-
-    Ok(())
 }
 
 pub async fn download_folder(
@@ -121,9 +133,8 @@ pub async fn download_folder(
     files: Vec<FileInfo>,
     token: Option<String>,
     is_dataset: bool,
+    shutdown: crate::ShutdownHandle,
 ) -> PyResult<()> {
-    use tokio::select;
-
     let folder_name = name.clone();
     let folder_path = base_path;
     tokio::fs::create_dir_all(&folder_path)
@@ -136,10 +147,6 @@ pub async fn download_folder(
     // 检查需要下载的文件
     let mut downloaded_files = 0;
     for file in &files {
-        if INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
-            return Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"));
-        }
-
         let file_path = folder_path.join(&file.rfilename);
         if let Some(size) = file.size {
             let file_downloaded_size = get_downloaded_size(&file_path).await;
@@ -181,14 +188,6 @@ pub async fn download_folder(
         DownloadManager::new(total_download_size, crate::config::Config::default())
     };
 
-    // 创建一个中断检测任务
-    let interrupt_task = tokio::spawn(async move {
-        while !INTERRUPT_FLAG.load(std::sync::atomic::Ordering::SeqCst) {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-    });
-
-    // 创建下载任务
     let download_task = async {
         let mut tasks = Vec::new();
 
@@ -202,6 +201,7 @@ pub async fn download_folder(
             let endpoint = endpoint.clone();
             let model_id = model_id.clone();
             let download_manager = download_manager.clone();
+            let mut shutdown_rx = shutdown.subscribe();
 
             let task = tokio::spawn(async move {
                 if file.size.unwrap_or(0) > download_manager.get_config().parallel_download_threshold {
@@ -216,6 +216,7 @@ pub async fn download_folder(
                         &model_id,
                         is_dataset,
                         &download_manager,
+                        shutdown_rx,
                     ).await
                 } else {
                     download_small_file(
@@ -227,6 +228,7 @@ pub async fn download_folder(
                         &model_id,
                         is_dataset,
                         &download_manager,
+                        shutdown_rx,
                     ).await
                 }
             });
@@ -241,8 +243,7 @@ pub async fn download_folder(
         Ok::<_, String>(())
     };
 
-    // 使用 select! 等待任务完成或中断
-    select! {
+    tokio::select! {
         result = download_task => {
             match result {
                 Ok(_) => {
@@ -251,8 +252,8 @@ pub async fn download_folder(
                 },
                 Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(e))
             }
-        },
-        _ = interrupt_task => {
+        }
+        _ = shutdown.subscribe().recv() => {
             Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"))
         }
     }

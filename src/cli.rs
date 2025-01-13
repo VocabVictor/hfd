@@ -116,6 +116,7 @@ pub async fn download_file(
     include_patterns: Option<Vec<String>>,
     exclude_patterns: Option<Vec<String>>,
     token: Option<String>,
+    shutdown: crate::ShutdownHandle,
 ) -> PyResult<String> {
     let config = crate::config::Config::load()
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
@@ -198,6 +199,7 @@ pub async fn download_file(
                 &model_id,
                 is_dataset,
                 &download_manager,
+                shutdown.subscribe(),
             ).await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
         } else {
             crate::download::download_task::download_small_file(
@@ -209,6 +211,7 @@ pub async fn download_file(
                 &model_id,
                 is_dataset,
                 &download_manager,
+                shutdown.subscribe(),
             ).await.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e))?;
         }
     } else {
@@ -222,6 +225,7 @@ pub async fn download_file(
             files,
             token,
             is_dataset,
+            shutdown,
         ).await?;
     }
 
@@ -239,6 +243,7 @@ pub fn run_cli() -> PyResult<()> {
             args.include_patterns,
             args.exclude_patterns,
             args.hf_token,
+            crate::ShutdownHandle::new(),
         )) {
             Ok(result) => println!("{}", result),
             Err(e) => println!("Error: {}", e),
