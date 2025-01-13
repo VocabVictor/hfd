@@ -69,22 +69,20 @@ impl DownloadManager {
         }
     }
 
-    pub async fn get_progress(&self, filename: &str) -> Arc<ProgressBar> {
+    pub async fn get_progress(&self, _filename: &str) -> Arc<ProgressBar> {
         // 如果是文件夹下载，返回文件夹进度条
         if self.is_folder {
             let folder_progress = self.folder_progress.lock().await;
-            if let Some(pb) = folder_progress.as_ref() {
-                return pb.clone();
-            }
+            return folder_progress.as_ref()
+                .map(|pb| pb.clone())
+                .expect("Folder progress bar not found in folder download mode");
         }
 
         // 对于单文件下载，返回对应的进度条
         let file_progress = self.file_progress.lock().await;
-        if let Some(pb) = file_progress.get(filename) {
-            pb.clone()
-        } else {
-            panic!("Progress bar not found for file: {}", filename);
-        }
+        file_progress.get(_filename)
+            .map(|pb| pb.clone())
+            .expect(&format!("Progress bar not found for file: {}", _filename))
     }
 
     pub async fn create_file_progress(&self, filename: String, size: u64) -> Arc<ProgressBar> {
