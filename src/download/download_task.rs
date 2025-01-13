@@ -119,6 +119,7 @@ pub async fn download_small_file(
             Ok(())
         }
         _ = shutdown.recv() => {
+            download_manager.handle_interrupt(&file.rfilename).await;
             Err("Download interrupted by user".to_string())
         }
     }
@@ -192,9 +193,6 @@ pub async fn download_folder(
         let mut tasks = Vec::new();
 
         for file in need_download_files {
-            // 获取下载许可
-            let _permit = download_manager.acquire_permit().await;
-
             let file_path = folder_path.join(&file.rfilename);
             let client = client.clone();
             let token = token.clone();
@@ -250,10 +248,14 @@ pub async fn download_folder(
                     download_manager.finish_folder().await;
                     Ok(())
                 },
-                Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(e))
+                Err(e) => {
+                    download_manager.handle_folder_interrupt().await;
+                    Err(pyo3::exceptions::PyRuntimeError::new_err(e))
+                }
             }
         }
         _ = shutdown.subscribe().recv() => {
+            download_manager.handle_folder_interrupt().await;
             Err(pyo3::exceptions::PyRuntimeError::new_err("Download interrupted by user"))
         }
     }

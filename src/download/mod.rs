@@ -80,16 +80,10 @@ impl DownloadManager {
 
     pub async fn create_file_progress(&self, filename: String, size: u64) -> Arc<ProgressBar> {
         let mut file_progress = self.file_progress.lock().await;
-        if let Some(pb) = file_progress.get(&filename) {
-            return pb.clone();
-        }
-
-        if self.is_folder {
-            // 如果是文件夹下载，不创建单独的进度条
-            let folder_progress = self.folder_progress.lock().await;
-            if let Some(pb) = folder_progress.as_ref() {
-                return pb.clone();
-            }
+        
+        // 如果进度条已经存在，先移除它
+        if let Some(old_pb) = file_progress.remove(&filename) {
+            old_pb.finish_and_clear();
         }
 
         let pb = Arc::new(self.multi_progress.add(ProgressBar::new(size)));
@@ -171,19 +165,43 @@ impl DownloadManager {
         }
     }
 
-    pub async fn acquire_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
-        let permit = self.semaphore.clone().acquire_owned().await.unwrap();
-        
-        // 获取许可后，从队列中取出任务并开始下载
-        let mut queue = self.download_queue.lock().await;
-        let mut active_downloads = self.active_downloads.lock().await;
-        
-        if let Some(task) = queue.pop_front() {
-            active_downloads.insert(task.filename.clone(), task.clone());
-            task.progress.set_message(format!("Downloading {}", task.filename));
+    pub async fn cleanup(&self) {
+        // 清理所有进度条
+        let mut file_progress = self.file_progress.lock().await;
+        for (_, pb) in file_progress.drain() {
+            pb.finish_and_clear();
         }
-        
-        permit
+
+        // 清理文件夹进度条
+        if self.is_folder {
+            let mut folder_progress = self.folder_progress.lock().await;
+            if let Some(pb) = folder_progress.take() {
+                pb.finish_and_clear();
+            }
+        }
+
+        // 清理下载队列和活动下载
+        let mut queue = self.download_queue.lock().await;
+        queue.clear();
+        let mut active_downloads = self.active_downloads.lock().await;
+        active_downloads.clear();
+    }
+
+    pub async fn handle_interrupt(&self, filename: &str) {
+        let mut file_progress = self.file_progress.lock().await;
+        if let Some(pb) = file_progress.get(filename) {
+            pb.abandon_with_message(format!("⚠ Interrupted: {}", filename));
+        }
+    }
+
+    pub async fn handle_folder_interrupt(&self) {
+        if self.is_folder {
+            let folder_progress = self.folder_progress.lock().await;
+            if let Some(pb) = folder_progress.as_ref() {
+                pb.abandon_with_message("⚠ Download interrupted");
+            }
+        }
+        self.cleanup().await;
     }
 
     pub fn get_config(&self) -> Arc<Config> {

@@ -153,6 +153,7 @@ pub async fn download_chunked_file(
                                         return Ok(());
                                     }
                                     _ = shutdown_rx.recv() => {
+                                        download_manager.handle_interrupt(&filename).await;
                                         return Err("Download interrupted by user".to_string());
                                     }
                                 }
@@ -200,6 +201,7 @@ pub async fn download_chunked_file(
             Ok(())
         }
         _ = shutdown.recv() => {
+            download_manager.handle_interrupt(&file.rfilename).await;
             Err("Download interrupted by user".to_string())
         }
     }
