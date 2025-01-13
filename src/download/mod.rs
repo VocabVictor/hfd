@@ -186,23 +186,6 @@ impl DownloadManager {
         permit
     }
 
-    #[allow(dead_code)]
-    pub async fn print_status(&self) {
-        let queue = self.download_queue.lock().await;
-        let active = self.active_downloads.lock().await;
-        println!("Download status:");
-        println!("  Queue size: {}", queue.len());
-        println!("  Active downloads: {}", active.len());
-        println!("  Queue contents:");
-        for task in queue.iter() {
-            println!("    - {}", task.filename);
-        }
-        println!("  Active downloads:");
-        for (filename, _) in active.iter() {
-            println!("    - {}", filename);
-        }
-    }
-
     pub fn get_config(&self) -> Arc<Config> {
         self.config.clone()
     }

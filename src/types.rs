@@ -18,4 +18,9 @@ impl RepoInfo {
     pub fn is_dataset(&self) -> bool {
         self.dataset_endpoint.is_some()
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Auth {
+    pub token: Option<String>,
 } 

@@ -7,7 +7,6 @@ lazy_static! {
     pub static ref INTERRUPT_FLAG: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 }
 
-mod auth;
 mod config;
 mod download;
 mod types;

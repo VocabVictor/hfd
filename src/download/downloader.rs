@@ -1,4 +1,4 @@
-use crate::auth::Auth;
+use crate::types::Auth;
 use crate::config::Config;
 use crate::types::{RepoInfo, FileInfo};
 use pyo3::prelude::*;

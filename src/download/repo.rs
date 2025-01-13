@@ -1,6 +1,5 @@
 use reqwest::Client;
-use crate::types::{FileInfo, RepoInfo};
-use crate::auth::Auth;
+use crate::types::{FileInfo, RepoInfo, Auth};
 use crate::config::Config;
 use pyo3::prelude::*;
 use serde_json::Value;
